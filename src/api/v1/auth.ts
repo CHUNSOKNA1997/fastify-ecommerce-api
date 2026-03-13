@@ -1,14 +1,14 @@
 import { FastifyPluginAsync } from 'fastify'
 import bcrypt from 'bcryptjs'
-import { createUser, findUserByEmail } from '../modules/auth/user.repository'
+import { createUser, findUserByEmail } from '../../modules/auth/user.repository'
 
 type AuthBody = {
   email: string
   password: string
 }
 
-const auth: FastifyPluginAsync = async (fastify): Promise<void> => {
-  fastify.post<{ Body: AuthBody }>('/api/v1/auth/register', {
+const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
+  fastify.post<{ Body: AuthBody }>('/register', {
     schema: {
       body: {
         type: 'object',
@@ -41,7 +41,7 @@ const auth: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
-  fastify.post<{ Body: AuthBody }>('/api/v1/auth/login', {
+  fastify.post<{ Body: AuthBody }>('/login', {
     schema: {
       body: {
         type: 'object',
@@ -72,7 +72,7 @@ const auth: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
-  fastify.get('/api/v1/auth/me', {
+  fastify.get('/me', {
     preHandler: fastify.authenticate
   }, async (request) => {
     return {
@@ -83,7 +83,7 @@ const auth: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
-  fastify.post('/api/v1/auth/logout', {
+  fastify.post('/logout', {
     preHandler: fastify.authenticate
   }, async () => {
     return {
@@ -92,4 +92,4 @@ const auth: FastifyPluginAsync = async (fastify): Promise<void> => {
   })
 }
 
-export default auth
+export default authRoutes

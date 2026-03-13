@@ -29,6 +29,7 @@ Run the test cases.
 
 - App bootstrap with Fastify autoload (`src/app.ts`)
 - Root route (`src/routes/root.ts`)
+- API router (`src/routes/api.ts`) with version router (`src/api/v1/index.ts`)
 - HTTP utilities plugin (`src/plugins/sensible.ts`)
 - JWT auth plugin (`src/plugins/jwt.ts`)
 - MongoDB plugin with Mongoose (`src/plugins/mongoose.ts`)
