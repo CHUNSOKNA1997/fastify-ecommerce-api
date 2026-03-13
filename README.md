@@ -4,7 +4,7 @@ A minimal Fastify + TypeScript baseline ready for implementing the ecommerce API
 ## Environment Variables
 
 - `PORT=5000`
-- `JWT_SECRET=change-me-in-production`
+- `JWT_SECRET=replace-with-a-random-secret-32-characters-minimum` (at least 16 chars in dev/test, 32+ outside dev/test, and no known default secrets)
 - `MONGODB_URI=mongodb://localhost:27017/flutter-ecommerce`
 
 ## Available Scripts
@@ -36,6 +36,7 @@ No tests are configured currently.
 ## Authentication API (`/api/v1/auth`)
 
 - `POST /api/v1/auth/register` - create account and return access token (`firstName`, `lastName`, `email`, `password`, `confirmPassword`)
+  - Validation: `email` must be valid format, password is 8-72 chars
 - `POST /api/v1/auth/login` - authenticate and return access token
 - `GET /api/v1/auth/me` - get current user from bearer token
 - `POST /api/v1/auth/logout` - protected endpoint that invalidates current token

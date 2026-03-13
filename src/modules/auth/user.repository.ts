@@ -25,22 +25,34 @@ function toUserRecord(user: HydratedDocument<User>): UserRecord {
   }
 }
 
+function isMongoDuplicateKeyError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 11000
+  )
+}
+
 export async function createUser(firstName: string, lastName: string, email: string, passwordHash: string): Promise<UserRecord | null> {
   const normalizedEmail = normalizeEmail(email)
-  const existingUser = await UserModel.findOne({ email: normalizedEmail })
 
-  if (existingUser) {
-    return null
+  try {
+    const user = await UserModel.create({
+      firstName,
+      lastName,
+      email: normalizedEmail,
+      passwordHash
+    })
+
+    return toUserRecord(user)
+  } catch (error) {
+    if (isMongoDuplicateKeyError(error)) {
+      return null
+    }
+
+    throw error
   }
-
-  const user = await UserModel.create({
-    firstName,
-    lastName,
-    email: normalizedEmail,
-    passwordHash
-  })
-
-  return toUserRecord(user)
 }
 
 export async function findUserByEmail(email: string): Promise<UserRecord | null> {

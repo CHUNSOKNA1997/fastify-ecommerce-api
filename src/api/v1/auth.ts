@@ -26,23 +26,30 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 				required: ['firstName', 'lastName', 'email', 'password', 'confirmPassword'],
 				additionalProperties: false,
 				properties: {
-					firstName: { type: 'string', minLength: 1 },
-					lastName: { type: 'string', minLength: 1 },
-					email: { type: 'string', minLength: 3 },
-					password: { type: 'string', minLength: 8 },
-					confirmPassword: { type: 'string', minLength: 8 }
+					firstName: { type: 'string', minLength: 1, maxLength: 100 },
+					lastName: { type: 'string', minLength: 1, maxLength: 100 },
+					email: { type: 'string', format: 'email', maxLength: 254 },
+					password: { type: 'string', minLength: 8, maxLength: 72 },
+					confirmPassword: { type: 'string', minLength: 8, maxLength: 72 }
 				}
 			}
 		}
 	}, async (request, reply) => {
 		const { firstName, lastName, email, password, confirmPassword } = request.body
+		const normalizedFirstName = firstName.trim()
+		const normalizedLastName = lastName.trim()
+		const normalizedEmail = email.trim()
+
+		if (!normalizedFirstName || !normalizedLastName) {
+			throw fastify.httpErrors.badRequest('First name and last name are required')
+		}
 
 		if (password !== confirmPassword) {
 			throw fastify.httpErrors.badRequest('Password and confirm password do not match')
 		}
 
 		const passwordHash = await bcrypt.hash(password, 10)
-		const user = await createUser(firstName, lastName, email, passwordHash)
+		const user = await createUser(normalizedFirstName, normalizedLastName, normalizedEmail, passwordHash)
 
 		if (!user) {
 			throw fastify.httpErrors.conflict('Email is already registered')
@@ -75,14 +82,14 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 				required: ['email', 'password'],
 				additionalProperties: false,
 				properties: {
-					email: { type: 'string', minLength: 3 },
-					password: { type: 'string', minLength: 8 }
+					email: { type: 'string', format: 'email', maxLength: 254 },
+					password: { type: 'string', minLength: 8, maxLength: 72 }
 				}
 			}
 		}
 	}, async (request) => {
 		const { email, password } = request.body
-		const user = await findUserByEmail(email)
+		const user = await findUserByEmail(email.trim())
 
 		if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
 			throw fastify.httpErrors.unauthorized('Invalid email or password')
