@@ -5,6 +5,7 @@ import { createUser, findUserByEmail, incrementUserTokenVersion } from '../../mo
 type AuthBody = {
 	email: string
 	password: string
+	confirmPassword?: string
 }
 
 const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
@@ -15,16 +16,22 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		schema: {
 			body: {
 				type: 'object',
-				required: ['email', 'password'],
+				required: ['email', 'password', 'confirmPassword'],
 				additionalProperties: false,
 				properties: {
 					email: { type: 'string', minLength: 3 },
-					password: { type: 'string', minLength: 8 }
+					password: { type: 'string', minLength: 8 },
+					confirmPassword: { type: 'string', minLength: 8 }
 				}
 			}
 		}
 	}, async (request, reply) => {
-		const { email, password } = request.body
+		const { email, password, confirmPassword } = request.body
+
+		if (password !== confirmPassword) {
+			throw fastify.httpErrors.badRequest('Password and confirm password do not match')
+		}
+
 		const passwordHash = await bcrypt.hash(password, 10)
 		const user = await createUser(email, passwordHash)
 

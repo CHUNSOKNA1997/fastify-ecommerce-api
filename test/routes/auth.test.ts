@@ -14,7 +14,8 @@ test('register creates a user and returns access token', async (t) => {
     url: '/api/v1/auth/register',
     payload: {
       email: uniqueEmail(),
-      password: 'password123'
+      password: 'password123',
+      confirmPassword: 'password123'
     }
   })
 
@@ -33,7 +34,8 @@ test('register rejects duplicate email', async (t) => {
     url: '/api/v1/auth/register',
     payload: {
       email,
-      password: 'password123'
+      password: 'password123',
+      confirmPassword: 'password123'
     }
   })
 
@@ -42,11 +44,28 @@ test('register rejects duplicate email', async (t) => {
     url: '/api/v1/auth/register',
     payload: {
       email,
-      password: 'password123'
+      password: 'password123',
+      confirmPassword: 'password123'
     }
   })
 
   assert.strictEqual(res.statusCode, 409)
+})
+
+test('register rejects mismatched confirm password', async (t) => {
+  const app = await build(t)
+
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/register',
+    payload: {
+      email: uniqueEmail(),
+      password: 'password123',
+      confirmPassword: 'password124'
+    }
+  })
+
+  assert.strictEqual(res.statusCode, 400)
 })
 
 test('login returns access token for valid credentials', async (t) => {
@@ -57,7 +76,7 @@ test('login returns access token for valid credentials', async (t) => {
   await app.inject({
     method: 'POST',
     url: '/api/v1/auth/register',
-    payload: { email, password }
+    payload: { email, password, confirmPassword: password }
   })
 
   const res = await app.inject({
@@ -81,7 +100,8 @@ test('login rejects invalid credentials', async (t) => {
     url: '/api/v1/auth/register',
     payload: {
       email,
-      password: 'password123'
+      password: 'password123',
+      confirmPassword: 'password123'
     }
   })
 
@@ -112,7 +132,7 @@ test('me requires valid bearer token', async (t) => {
   const registerRes = await app.inject({
     method: 'POST',
     url: '/api/v1/auth/register',
-    payload: { email, password }
+    payload: { email, password, confirmPassword: password }
   })
 
   const token = registerRes.json().accessToken as string
@@ -136,7 +156,7 @@ test('logout invalidates current access token', async (t) => {
   const registerRes = await app.inject({
     method: 'POST',
     url: '/api/v1/auth/register',
-    payload: { email, password }
+    payload: { email, password, confirmPassword: password }
   })
 
   const token = registerRes.json().accessToken as string
