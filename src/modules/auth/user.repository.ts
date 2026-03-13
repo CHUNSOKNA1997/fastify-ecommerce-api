@@ -5,6 +5,7 @@ export interface UserRecord {
   id: string
   email: string
   passwordHash: string
+  tokenVersion: number
 }
 
 function normalizeEmail(email: string): string {
@@ -15,7 +16,8 @@ function toUserRecord(user: HydratedDocument<User>): UserRecord {
   return {
     id: user.id,
     email: user.email,
-    passwordHash: user.passwordHash
+    passwordHash: user.passwordHash,
+    tokenVersion: user.tokenVersion
   }
 }
 
@@ -44,4 +46,21 @@ export async function findUserByEmail(email: string): Promise<UserRecord | null>
   }
 
   return toUserRecord(user)
+}
+
+export async function findUserById(id: string): Promise<UserRecord | null> {
+  const user = await UserModel.findById(id)
+
+  if (!user) {
+    return null
+  }
+
+  return toUserRecord(user)
+}
+
+export async function incrementUserTokenVersion(id: string): Promise<void> {
+  await UserModel.updateOne(
+    { _id: id },
+    { $inc: { tokenVersion: 1 } }
+  )
 }

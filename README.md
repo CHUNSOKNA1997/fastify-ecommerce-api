@@ -28,7 +28,6 @@ Run the test cases.
 ## Current Baseline
 
 - App bootstrap with Fastify autoload (`src/app.ts`)
-- Root route (`src/routes/root.ts`)
 - API router (`src/routes/api.ts`) with version router (`src/api/v1/index.ts`)
 - HTTP utilities plugin (`src/plugins/sensible.ts`)
 - JWT auth plugin (`src/plugins/jwt.ts`)
@@ -39,6 +38,6 @@ Run the test cases.
 - `POST /api/v1/auth/register` - create account and return access token
 - `POST /api/v1/auth/login` - authenticate and return access token
 - `GET /api/v1/auth/me` - get current user from bearer token
-- `POST /api/v1/auth/logout` - protected endpoint for client-side logout flow
+- `POST /api/v1/auth/logout` - protected endpoint that invalidates current token
 
 Auth users are persisted in MongoDB via Mongoose.

@@ -128,7 +128,7 @@ test('me requires valid bearer token', async (t) => {
   assert.strictEqual(meRes.json().user.email, email)
 })
 
-test('logout succeeds with valid bearer token', async (t) => {
+test('logout invalidates current access token', async (t) => {
   const app = await build(t)
   const email = uniqueEmail()
   const password = 'password123'
@@ -150,4 +150,14 @@ test('logout succeeds with valid bearer token', async (t) => {
 
   assert.strictEqual(logoutRes.statusCode, 200)
   assert.strictEqual(logoutRes.json().message, 'Logged out successfully')
+
+  const meAfterLogoutRes = await app.inject({
+    method: 'GET',
+    url: '/api/v1/auth/me',
+    headers: {
+      authorization: `Bearer ${token}`
+    }
+  })
+
+  assert.strictEqual(meAfterLogoutRes.statusCode, 401)
 })
