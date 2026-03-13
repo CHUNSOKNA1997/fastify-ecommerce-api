@@ -1,0 +1,26 @@
+import { Model, Schema, model, models } from 'mongoose'
+
+export interface User {
+  email: string
+  passwordHash: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+const userSchema = new Schema<User>({
+  email: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+    lowercase: true
+  },
+  passwordHash: {
+    type: String,
+    required: true
+  }
+}, {
+  timestamps: true
+})
+
+export const UserModel: Model<User> = models.User as Model<User> || model<User>('User', userSchema)

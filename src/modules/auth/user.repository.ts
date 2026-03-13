@@ -1,0 +1,47 @@
+import { HydratedDocument } from 'mongoose'
+import { User, UserModel } from './user.model'
+
+export interface UserRecord {
+  id: string
+  email: string
+  passwordHash: string
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
+function toUserRecord(user: HydratedDocument<User>): UserRecord {
+  return {
+    id: user.id,
+    email: user.email,
+    passwordHash: user.passwordHash
+  }
+}
+
+export async function createUser(email: string, passwordHash: string): Promise<UserRecord | null> {
+  const normalizedEmail = normalizeEmail(email)
+  const existingUser = await UserModel.findOne({ email: normalizedEmail })
+
+  if (existingUser) {
+    return null
+  }
+
+  const user = await UserModel.create({
+    email: normalizedEmail,
+    passwordHash
+  })
+
+  return toUserRecord(user)
+}
+
+export async function findUserByEmail(email: string): Promise<UserRecord | null> {
+  const normalizedEmail = normalizeEmail(email)
+  const user = await UserModel.findOne({ email: normalizedEmail })
+
+  if (!user) {
+    return null
+  }
+
+  return toUserRecord(user)
+}
