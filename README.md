@@ -35,7 +35,7 @@ Run the test cases.
 
 ## Authentication API (`/api/v1/auth`)
 
-- `POST /api/v1/auth/register` - create account and return access token (`email`, `password`, `confirmPassword`)
+- `POST /api/v1/auth/register` - create account and return access token (`firstName`, `lastName`, `email`, `password`, `confirmPassword`)
 - `POST /api/v1/auth/login` - authenticate and return access token
 - `GET /api/v1/auth/me` - get current user from bearer token
 - `POST /api/v1/auth/logout` - protected endpoint that invalidates current token

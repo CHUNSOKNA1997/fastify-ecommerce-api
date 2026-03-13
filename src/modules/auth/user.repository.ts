@@ -3,6 +3,8 @@ import { User, UserModel } from './user.model'
 
 export interface UserRecord {
   id: string
+  firstName: string
+  lastName: string
   email: string
   passwordHash: string
   tokenVersion: number
@@ -15,13 +17,15 @@ function normalizeEmail(email: string): string {
 function toUserRecord(user: HydratedDocument<User>): UserRecord {
   return {
     id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
     email: user.email,
     passwordHash: user.passwordHash,
     tokenVersion: user.tokenVersion
   }
 }
 
-export async function createUser(email: string, passwordHash: string): Promise<UserRecord | null> {
+export async function createUser(firstName: string, lastName: string, email: string, passwordHash: string): Promise<UserRecord | null> {
   const normalizedEmail = normalizeEmail(email)
   const existingUser = await UserModel.findOne({ email: normalizedEmail })
 
@@ -30,6 +34,8 @@ export async function createUser(email: string, passwordHash: string): Promise<U
   }
 
   const user = await UserModel.create({
+    firstName,
+    lastName,
     email: normalizedEmail,
     passwordHash
   })
