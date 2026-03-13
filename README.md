@@ -23,7 +23,7 @@ For production mode (also uses `.env` `PORT`).
 
 ### `npm run test`
 
-Run the test cases.
+No tests are configured currently.
 
 ## Current Baseline
 
