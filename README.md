@@ -8,6 +8,7 @@ A minimal Fastify + TypeScript baseline ready for implementing the ecommerce API
 - `MONGODB_URI=mongodb://localhost:27017/flutter-ecommerce`
 - `ACCESS_TOKEN_TTL=1h`
 - `REFRESH_TOKEN_TTL_DAYS=30`
+- `RESET_PASSWORD_TOKEN_TTL_MINUTES=15`
 
 ## Available Scripts
 
@@ -41,6 +42,8 @@ No tests are configured currently.
   - Validation: `email` must be valid format, password is 8-72 chars
 - `POST /api/v1/auth/login` - authenticate and return access token + refresh token
 - `POST /api/v1/auth/refresh` - rotate refresh token and issue new access/refresh pair
+- `POST /api/v1/auth/forgot-password` - generate one-time password reset token (returned only outside production)
+- `POST /api/v1/auth/reset-password` - reset password with valid token and invalidate existing sessions
 - `GET /api/v1/auth/me` - get current user from bearer token
 - `POST /api/v1/auth/logout` - protected endpoint that invalidates current access token and revokes refresh sessions
 

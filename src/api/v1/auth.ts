@@ -1,12 +1,24 @@
 import { FastifyPluginAsync } from 'fastify'
 import bcrypt from 'bcryptjs'
-import { createUser, findUserByEmail, findUserById, incrementUserTokenVersion } from '../../modules/auth/user.repository'
+import {
+	createUser,
+	findUserByEmail,
+	findUserById,
+	incrementUserTokenVersion,
+	updateUserPasswordHash
+} from '../../modules/auth/user.repository'
 import {
 	issueRefreshToken,
 	findRefreshToken,
 	revokeAllUserRefreshTokens,
 	revokeRefreshTokenById
 } from '../../modules/auth/refresh-token.repository'
+import {
+	findPasswordResetToken,
+	issuePasswordResetToken,
+	markPasswordResetTokenUsed,
+	revokeAllPasswordResetTokens
+} from '../../modules/auth/password-reset-token.repository'
 
 type RegisterBody = {
 	firstName: string
@@ -25,6 +37,16 @@ type RefreshBody = {
 	refreshToken: string
 }
 
+type ForgotPasswordBody = {
+	email: string
+}
+
+type ResetPasswordBody = {
+	resetToken: string
+	password: string
+	confirmPassword: string
+}
+
 const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 	function getAccessTokenTtl(): string {
 		return process.env.ACCESS_TOKEN_TTL?.trim() || '1h'
@@ -39,6 +61,17 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		}
 
 		return ttlDays
+	}
+
+	function getResetTokenTtlMinutes(): number {
+		const rawValue = process.env.RESET_PASSWORD_TOKEN_TTL_MINUTES?.trim() || '15'
+		const ttlMinutes = Number.parseInt(rawValue, 10)
+
+		if (!Number.isInteger(ttlMinutes) || ttlMinutes <= 0) {
+			throw new Error('RESET_PASSWORD_TOKEN_TTL_MINUTES must be a positive integer')
+		}
+
+		return ttlMinutes
 	}
 
 	async function buildAuthResponse(user: { id: string, firstName: string, lastName: string, email: string, tokenVersion: number }) {
@@ -190,6 +223,92 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 			user: response.user,
 			accessToken: response.accessToken,
 			refreshToken: response.refreshToken
+		}
+	})
+
+	fastify.post<{ Body: ForgotPasswordBody }>('/forgot-password', {
+		schema: {
+			body: {
+				type: 'object',
+				required: ['email'],
+				additionalProperties: false,
+				properties: {
+					email: { type: 'string', format: 'email', maxLength: 254 }
+				}
+			}
+		}
+	}, async (request) => {
+		const user = await findUserByEmail(request.body.email.trim())
+
+		if (!user) {
+			return {
+				message: 'If the account exists, password reset instructions have been sent'
+			}
+		}
+
+		await revokeAllPasswordResetTokens(user.id)
+		const issuedToken = await issuePasswordResetToken(user.id, getResetTokenTtlMinutes())
+		const isProduction = (process.env.NODE_ENV ?? 'development').toLowerCase() === 'production'
+
+		if (isProduction) {
+			return {
+				message: 'If the account exists, password reset instructions have been sent'
+			}
+		}
+
+		return {
+			message: 'Password reset token generated',
+			resetToken: issuedToken.token
+		}
+	})
+
+	fastify.post<{ Body: ResetPasswordBody }>('/reset-password', {
+		schema: {
+			body: {
+				type: 'object',
+				required: ['resetToken', 'password', 'confirmPassword'],
+				additionalProperties: false,
+				properties: {
+					resetToken: { type: 'string', minLength: 16, maxLength: 500 },
+					password: { type: 'string', minLength: 8, maxLength: 72 },
+					confirmPassword: { type: 'string', minLength: 8, maxLength: 72 }
+				}
+			}
+		}
+	}, async (request) => {
+		const { resetToken, password, confirmPassword } = request.body
+		if (password !== confirmPassword) {
+			throw fastify.httpErrors.badRequest('Password and confirm password do not match')
+		}
+
+		const resetRecord = await findPasswordResetToken(resetToken.trim())
+		if (!resetRecord) {
+			throw fastify.httpErrors.unauthorized('Invalid password reset token')
+		}
+
+		if (resetRecord.usedAt) {
+			throw fastify.httpErrors.unauthorized('Password reset token has already been used')
+		}
+
+		if (resetRecord.expiresAt.getTime() <= Date.now()) {
+			await markPasswordResetTokenUsed(resetRecord.id)
+			throw fastify.httpErrors.unauthorized('Password reset token has expired')
+		}
+
+		const user = await findUserById(resetRecord.userId)
+		if (!user) {
+			throw fastify.httpErrors.unauthorized('User no longer exists')
+		}
+
+		const passwordHash = await bcrypt.hash(password, 10)
+		await updateUserPasswordHash(user.id, passwordHash)
+		await markPasswordResetTokenUsed(resetRecord.id)
+		await revokeAllPasswordResetTokens(user.id)
+		await revokeAllUserRefreshTokens(user.id)
+		await incrementUserTokenVersion(user.id)
+
+		return {
+			message: 'Password has been reset successfully'
 		}
 	})
 

@@ -82,3 +82,10 @@ export async function incrementUserTokenVersion(id: string): Promise<void> {
     { $inc: { tokenVersion: 1 } }
   )
 }
+
+export async function updateUserPasswordHash(id: string, passwordHash: string): Promise<void> {
+  await UserModel.updateOne(
+    { _id: id },
+    { $set: { passwordHash } }
+  )
+}
