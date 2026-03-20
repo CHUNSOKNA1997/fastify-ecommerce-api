@@ -7,7 +7,7 @@ export interface Payment {
   currency: string
   status: 'PENDING' | 'PAID' | 'FAILED'
   paymentMethod?: string
-  paywayResponse?: any
+  paywayResponse?: Record<string, unknown>
   createdAt: Date
   updatedAt: Date
 }
