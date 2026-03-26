@@ -1,13 +1,14 @@
 import { Model, Schema, model, models, Types } from 'mongoose'
+import type { PaymentProviderState, PaymentStatus } from './payway.types'
 
 export interface Payment {
   userId: Types.ObjectId
   tranId: string
   amount: number
   currency: string
-  status: 'PENDING' | 'PAID' | 'FAILED'
+  status: PaymentStatus
   paymentMethod?: string
-  paywayResponse?: Record<string, unknown>
+  paywayResponse?: PaymentProviderState
   createdAt: Date
   updatedAt: Date
 }

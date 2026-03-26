@@ -1,5 +1,10 @@
 import { Types } from 'mongoose'
 import { PaymentModel } from './payment.model'
+import type {
+  PaywayCallbackPayload,
+  PaywayCheckTransactionResponse,
+  PaywayPurchaseResponse
+} from './payway.types'
 
 export class PaymentRepository {
   async create(data: {
@@ -19,23 +24,74 @@ export class PaymentRepository {
     return PaymentModel.findOne({ tranId })
   }
 
-  async markAsPaid(tranId: string, payload?: Record<string, unknown>) {
+  async findByTranIdForUser(tranId: string, userId: string | Types.ObjectId) {
+    return PaymentModel.findOne({ tranId, userId })
+  }
+
+  async recordPurchaseInitiation(tranId: string, purchase: PaywayPurchaseResponse) {
     return PaymentModel.findOneAndUpdate(
       { tranId },
       {
-        status: 'PAID',
-        paywayResponse: payload
+        $set: {
+          'paywayResponse.purchase': purchase
+        }
       },
       { new: true }
     )
   }
 
-  async markAsFailed(tranId: string, payload?: Record<string, unknown>) {
+  async recordPurchaseRequest(tranId: string, purchaseRequest: Record<string, unknown>) {
     return PaymentModel.findOneAndUpdate(
       { tranId },
       {
-        status: 'FAILED',
-        paywayResponse: payload
+        $set: {
+          'paywayResponse.purchaseRequest': purchaseRequest
+        }
+      },
+      { new: true }
+    )
+  }
+
+  async markAsPaid(
+    tranId: string,
+    payload: {
+      callback: PaywayCallbackPayload
+      verification: PaywayCheckTransactionResponse
+    }
+  ) {
+    return PaymentModel.findOneAndUpdate(
+      { tranId },
+      {
+        $set: {
+          status: 'PAID',
+          'paywayResponse.callback': payload.callback,
+          'paywayResponse.verification': payload.verification
+        },
+        $unset: {
+          'paywayResponse.lastError': 1
+        }
+      },
+      { new: true }
+    )
+  }
+
+  async markAsFailed(
+    tranId: string,
+    payload: {
+      callback?: PaywayCallbackPayload
+      verification?: PaywayCheckTransactionResponse
+      error?: Record<string, unknown>
+    }
+  ) {
+    return PaymentModel.findOneAndUpdate(
+      { tranId },
+      {
+        $set: {
+          status: 'FAILED',
+          ...(payload.callback ? { 'paywayResponse.callback': payload.callback } : {}),
+          ...(payload.verification ? { 'paywayResponse.verification': payload.verification } : {}),
+          ...(payload.error ? { 'paywayResponse.lastError': payload.error } : {})
+        }
       },
       { new: true }
     )
