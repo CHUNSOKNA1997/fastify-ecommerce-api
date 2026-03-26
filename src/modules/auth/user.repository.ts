@@ -6,6 +6,7 @@ export interface UserRecord {
   firstName: string
   lastName: string
   email: string
+  phone?: string
   passwordHash: string
   tokenVersion: number
 }
@@ -20,6 +21,7 @@ function toUserRecord(user: HydratedDocument<User>): UserRecord {
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
+    phone: user.phone,
     passwordHash: user.passwordHash,
     tokenVersion: user.tokenVersion
   }
@@ -88,4 +90,31 @@ export async function updateUserPasswordHash(id: string, passwordHash: string): 
     { _id: id },
     { $set: { passwordHash } }
   )
+}
+
+export async function updateUserProfile(
+  id: string,
+  input: {
+    firstName: string
+    lastName: string
+    phone?: string
+  }
+): Promise<UserRecord | null> {
+  const user = await UserModel.findByIdAndUpdate(
+    id,
+    {
+      $set: {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        phone: input.phone?.trim() || undefined
+      }
+    },
+    { new: true }
+  )
+
+  if (!user) {
+    return null
+  }
+
+  return toUserRecord(user)
 }

@@ -4,6 +4,7 @@ export interface User {
   firstName: string
   lastName: string
   email: string
+  phone?: string
   passwordHash: string
   tokenVersion: number
   createdAt: Date
@@ -27,6 +28,10 @@ const userSchema = new Schema<User>({
     unique: true,
     trim: true,
     lowercase: true
+  },
+  phone: {
+    type: String,
+    trim: true
   },
   passwordHash: {
     type: String,
