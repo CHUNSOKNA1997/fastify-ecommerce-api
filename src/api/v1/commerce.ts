@@ -71,7 +71,21 @@ function serializeCart(cart: Awaited<ReturnType<typeof findOrCreateCartByUserId>
   }
 }
 
+/**
+ * Commerce routes
+ * @param fastify 
+ */
 const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
+  /**
+   * List products
+   * @route GET /products
+   * @description List products with optional search and category filtering
+   * @response 200 - List of products
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.get<{ Querystring: ProductListQuery }>('/products', {
     schema: {
       querystring: {
@@ -91,12 +105,32 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * List categories
+   * @route GET /categories
+   * @description List categories
+   * @response 200 - List of categories
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.get('/categories', async () => {
     return {
       items: await listCategories()
     }
   })
 
+  /**
+   * Get product by ID
+   * @route GET /products/:productId
+   * @description Get product by ID
+   * @response 200 - Product details
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.get<{ Params: ProductParams }>('/products/:productId', {
     schema: {
       params: {
@@ -119,6 +153,16 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * Get cart
+   * @route GET /cart
+   * @description Get cart
+   * @response 200 - Cart details
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.get('/cart', {
     preHandler: fastify.authenticate
   }, async (request) => {
@@ -129,6 +173,16 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * Add cart item
+   * @route POST /cart/items
+   * @description Add cart item
+   * @response 201 - Cart item added
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.post<{ Body: CartItemBody }>('/cart/items', {
     preHandler: fastify.authenticate,
     schema: {
@@ -164,6 +218,16 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * Update cart item
+   * @route PATCH /cart/items/:itemId
+   * @description Update cart item
+   * @response 200 - Cart item updated
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.patch<{ Params: CartItemParams, Body: CartItemUpdateBody }>('/cart/items/:itemId', {
     preHandler: fastify.authenticate,
     schema: {
@@ -196,6 +260,16 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * Remove cart item
+   * @route DELETE /cart/items/:itemId
+   * @description Remove cart item
+   * @response 200 - Cart item removed
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.delete<{ Params: CartItemParams }>('/cart/items/:itemId', {
     preHandler: fastify.authenticate,
     schema: {
@@ -220,6 +294,16 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * Clear cart
+   * @route DELETE /cart
+   * @description Clear cart
+   * @response 200 - Cart cleared
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.delete('/cart', {
     preHandler: fastify.authenticate
   }, async (request) => {
@@ -231,6 +315,16 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * Create order
+   * @route POST /orders
+   * @description Create order
+   * @response 201 - Order created
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.post('/orders', {
     preHandler: fastify.authenticate
   }, async (request, reply) => {
@@ -273,6 +367,16 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * List orders
+   * @route GET /orders
+   * @description List orders
+   * @response 200 - List of orders
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.get('/orders', {
     preHandler: fastify.authenticate
   }, async (request) => {

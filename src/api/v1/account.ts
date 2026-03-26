@@ -36,7 +36,21 @@ function serializeWishlist(wishlist: Awaited<ReturnType<typeof findOrCreateWishl
   }
 }
 
+/**
+ * Account routes
+ * @param fastify 
+ */
 const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
+  /**
+   * Get user profile
+   * @route GET /users/profile
+   * @description Get user profile
+   * @response 200 - User profile
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.get('/users/profile', {
     preHandler: fastify.authenticate
   }, async (request) => {
@@ -56,6 +70,16 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * Update user profile
+   * @route PATCH /users/profile
+   * @description Update user profile
+   * @response 200 - User profile updated
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.patch<{ Body: UpdateProfileBody }>('/users/profile', {
     preHandler: fastify.authenticate,
     schema: {
@@ -93,6 +117,16 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * Get wishlist
+   * @route GET /wishlist
+   * @description Get wishlist
+   * @response 200 - Wishlist details
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.get('/wishlist', {
     preHandler: fastify.authenticate
   }, async (request) => {
@@ -103,6 +137,16 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * Add wishlist item
+   * @route POST /wishlist/items
+   * @description Add wishlist item
+   * @response 201 - Wishlist item added
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.post<{ Body: WishlistBody }>('/wishlist/items', {
     preHandler: fastify.authenticate,
     schema: {
@@ -138,6 +182,16 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   })
 
+  /**
+   * Remove wishlist item
+   * @route DELETE /wishlist/items/:productId
+   * @description Remove wishlist item
+   * @response 200 - Wishlist item removed
+   * @response 400 - Bad request
+   * @response 401 - Unauthorized
+   * @response 404 - Not found
+   * @response 500 - Internal server error
+   */
   fastify.delete<{ Params: WishlistParams }>('/wishlist/items/:productId', {
     preHandler: fastify.authenticate,
     schema: {

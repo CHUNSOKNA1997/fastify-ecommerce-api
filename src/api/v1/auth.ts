@@ -96,6 +96,12 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
 	/**
 	 * Register a new user
+	 * @route POST /register
+	 * @description Register a new user
+	 * @response 201 - User registered
+	 * @response 400 - Bad request
+	 * @response 409 - Conflict
+	 * @response 500 - Internal server error
 	 */
 	fastify.post<{ Body: RegisterBody }>('/register', {
 		schema: {
@@ -144,6 +150,12 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
 	/**
 	 * Login user
+	 * @route POST /login
+	 * @description Login user
+	 * @response 200 - User logged in
+	 * @response 400 - Bad request
+	 * @response 401 - Unauthorized
+	 * @response 500 - Internal server error
 	 */
 	fastify.post<{ Body: LoginBody }>('/login', {
 		schema: {
@@ -173,6 +185,15 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		}
 	})
 
+	/**
+	 * Refresh access token
+	 * @route POST /refresh
+	 * @description Refresh access token
+	 * @response 200 - Access token refreshed
+	 * @response 400 - Bad request
+	 * @response 401 - Unauthorized
+	 * @response 500 - Internal server error
+	 */
 	fastify.post<{ Body: RefreshBody }>('/refresh', {
 		schema: {
 			body: {
@@ -226,6 +247,14 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		}
 	})
 
+	/**
+	 * Forgot password
+	 * @route POST /forgot-password
+	 * @description Forgot password
+	 * @response 200 - Password reset instructions sent
+	 * @response 400 - Bad request
+	 * @response 500 - Internal server error
+	 */
 	fastify.post<{ Body: ForgotPasswordBody }>('/forgot-password', {
 		schema: {
 			body: {
@@ -262,6 +291,15 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		}
 	})
 
+	/**
+	 * Reset password
+	 * @route POST /reset-password
+	 * @description Reset password
+	 * @response 200 - Password reset successfully
+	 * @response 400 - Bad request
+	 * @response 401 - Unauthorized
+	 * @response 500 - Internal server error
+	 */
 	fastify.post<{ Body: ResetPasswordBody }>('/reset-password', {
 		schema: {
 			body: {
@@ -314,6 +352,12 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
 	/**
 	 * Get current user
+	 * @route GET /me
+	 * @description Get current user
+	 * @response 200 - Current user
+	 * @response 400 - Bad request
+	 * @response 401 - Unauthorized
+	 * @response 500 - Internal server error
 	 */
 	fastify.get('/me', {
 		preHandler: fastify.authenticate
@@ -336,6 +380,12 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
 	/**
 	 * Logout user
+	 * @route POST /logout
+	 * @description Logout user
+	 * @response 200 - User logged out
+	 * @response 400 - Bad request
+	 * @response 401 - Unauthorized
+	 * @response 500 - Internal server error
 	 */
 	fastify.post('/logout', {
 		preHandler: fastify.authenticate
