@@ -22,7 +22,7 @@ Open [http://localhost:5000](http://localhost:5000) to view it in the browser.
 
 ### `npm start`
 
-For production mode (also uses `.env` `PORT`).
+For production mode. The server binds to `0.0.0.0` and reads runtime env vars directly, so it works in Docker/Render without a local `.env` file.
 
 ### `npm run test`
 
@@ -35,6 +35,34 @@ No tests are configured currently.
 - HTTP utilities plugin (`src/plugins/sensible.ts`)
 - JWT auth plugin (`src/plugins/jwt.ts`)
 - MongoDB plugin with Mongoose (`src/plugins/mongoose.ts`)
+
+## Docker / Render
+
+Build the image locally:
+
+```bash
+docker build -t fastify-ecommerce-api .
+```
+
+Run it:
+
+```bash
+docker run --rm -p 5000:5000 \
+  -e PORT=5000 \
+  -e MONGODB_URI='your-mongodb-uri' \
+  -e JWT_SECRET='your-strong-secret' \
+  fastify-ecommerce-api
+```
+
+On Render, create a new `Web Service`, choose `Docker`, and point it at this repo. Set these environment variables in Render:
+
+- `MONGODB_URI`
+- `JWT_SECRET`
+- `ACCESS_TOKEN_TTL`
+- `REFRESH_TOKEN_TTL_DAYS`
+- `RESET_PASSWORD_TOKEN_TTL_MINUTES`
+
+Render injects `PORT` automatically. The container starts with `dist/app.js` and listens on `0.0.0.0:$PORT`.
 
 ## Authentication API (`/api/v1/auth`)
 

@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: fastify-ecommerce-api
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false
+      - key: ACCESS_TOKEN_TTL
+        value: 1h
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: "30"
+      - key: RESET_PASSWORD_TOKEN_TTL_MINUTES
+        value: "15"
