@@ -8,8 +8,6 @@ const PURCHASE_HASH_ORDER: Array<keyof PaywayPurchaseRequest> = [
   'amount',
   'items',
   'shipping',
-  'ctid',
-  'pwt',
   'firstname',
   'lastname',
   'email',
@@ -21,6 +19,25 @@ const PURCHASE_HASH_ORDER: Array<keyof PaywayPurchaseRequest> = [
   'continue_success_url',
   'return_deeplink',
   'currency',
+  'custom_fields',
+  'return_params',
+  'payout',
+  'lifetime',
+  'additional_params',
+  'google_pay_token',
+  'skip_success_page'
+]
+
+const CALLBACK_HASH_ORDER: Array<keyof PaywayCallbackPayload> = [
+  'tran_id',
+  'status',
+  'apv',
+  'payment_status',
+  'payment_option',
+  'amount',
+  'currency',
+  'merchant_id',
+  'items',
   'custom_fields',
   'return_params'
 ]
@@ -90,12 +107,15 @@ export function extractCallbackSignature(
 }
 
 export function generateCallbackHash(payload: PaywayCallbackPayload, apiKey: string): string {
-  const sortedKeys = Object.keys(payload)
-    .filter((key) => key !== 'hash')
-    .sort()
+  const body = CALLBACK_HASH_ORDER
+    .map((key) => {
+      const value = payload[key]
+      if (value !== null && typeof value === 'object') {
+        return JSON.stringify(value)
+      }
 
-  const body = sortedKeys
-    .map((key) => normalizeHashValue(payload[key]))
+      return normalizeHashValue(value)
+    })
     .join('')
 
   return generateHmacSha512(body, apiKey)

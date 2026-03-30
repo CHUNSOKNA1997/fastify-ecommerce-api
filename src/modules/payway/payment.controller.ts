@@ -18,7 +18,9 @@ export class PaymentController {
     reply.code(201)
     return {
       payment: result.payment,
-      checkout_url: result.checkoutUrl
+      checkout_url: result.checkoutUrl,
+      purchase_url: result.purchaseUrl,
+      purchase_payload: result.purchasePayload
     }
   }
 
@@ -26,7 +28,7 @@ export class PaymentController {
     request: FastifyRequest<{ Params: { paymentId: string } }>,
     reply: FastifyReply
   ) {
-    const result = await this.paymentService.getCheckoutPage(request.params.paymentId)
+    const result = await this.paymentService.getCheckoutPage(request.params.paymentId, request.log)
     reply.type('text/html; charset=utf-8')
     return result.html
   }

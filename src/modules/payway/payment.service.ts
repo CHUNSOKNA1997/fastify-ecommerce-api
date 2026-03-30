@@ -4,7 +4,6 @@ import { PaymentRepository } from './payment.repository'
 import type { Payment } from './payment.model'
 import {
   buildRequestTime,
-  encodeBase64Value,
   extractCallbackSignature,
   generatePurchaseHash,
   generateTransactionDetailHash,
@@ -17,6 +16,7 @@ import type {
   PaywayCallbackPayload,
   PaywayCheckTransactionResponse,
   PaywayCheckoutPageResult,
+  PaywayPurchaseApiResponse,
   PaywayPurchaseRequest,
   PaymentSummary
 } from './payway.types'
@@ -25,9 +25,11 @@ type PaywayConfig = {
   apiKey: string
   merchantId: string
   purchaseUrl: string
+  checkoutBaseUrl: string
   transactionDetailUrl: string
   returnUrl?: string
   cancelUrl?: string
+  continueSuccessUrl?: string
 }
 
 export class PaymentService {
@@ -48,6 +50,7 @@ export class PaymentService {
     }
 
     const config = this.getConfig()
+    const normalizedAmount = Number(input.amount.toFixed(2))
     const existingPayment = await this.repo.findByOrderId(normalizedOrderId)
     if (existingPayment?.status === 'SUCCESS') {
       throw new Error('Payment already completed for this order')
@@ -55,7 +58,7 @@ export class PaymentService {
 
     const tranId = generateTransactionId()
     const request = this.buildPurchaseRequest({
-      amount: Number(input.amount.toFixed(2)),
+      amount: normalizedAmount,
       orderId: normalizedOrderId,
       tranId,
       baseUrl,
@@ -65,14 +68,14 @@ export class PaymentService {
     const payment = existingPayment
       ? await this.repo.updatePendingPaymentByOrderId(normalizedOrderId, {
         tranId,
-        amount: request.amount,
+        amount: normalizedAmount,
         currency: request.currency,
         purchaseRequest: request
       })
       : await this.repo.create({
         orderId: normalizedOrderId,
         tranId,
-        amount: request.amount,
+        amount: normalizedAmount,
         currency: request.currency
       })
 
@@ -80,63 +83,89 @@ export class PaymentService {
       throw new Error('Unable to create payment')
     }
 
-    await this.repo.recordPurchaseRequest(payment.id, request)
+    const signedPayload = {
+      ...request,
+      hash: generatePurchaseHash(request, config.apiKey)
+    }
+
+    const storedPayment = await this.repo.recordPurchaseRequest(payment.id, request)
     await this.repo.appendLog(payment.id, {
       event: 'CHECKOUT_CREATED',
       timestamp: new Date().toISOString(),
       details: {
-        amount: request.amount,
+        amount: normalizedAmount,
         orderId: normalizedOrderId,
         tranId
       }
     })
 
-    try {
-      const hostedCheckoutHtml = await this.fetchHostedCheckoutHtml(request, config, logger)
-      const storedPayment = await this.repo.storeCheckoutHtml(payment.id, hostedCheckoutHtml)
+    if (!storedPayment) {
+      throw new Error('Unable to persist purchase request')
+    }
 
-      if (!storedPayment) {
-        throw new Error('Unable to persist hosted checkout HTML')
+    await this.repo.appendLog(storedPayment.id, {
+      event: 'CHECKOUT_PAYLOAD_READY',
+      timestamp: new Date().toISOString(),
+      details: {
+        tranId,
+        purchaseUrl: config.purchaseUrl
       }
+    })
 
-      await this.repo.appendLog(storedPayment.id, {
-        event: 'CHECKOUT_HTML_STORED',
-        timestamp: new Date().toISOString(),
-        details: {
-          tranId
-        }
-      })
-
-      return {
-        payment: this.toPaymentSummary(storedPayment),
-        checkoutUrl: `${baseUrl}/api/payments/checkout/${storedPayment.id}`
-      }
-    } catch (error) {
-      const serializedError = this.serializeProviderError(error)
-      await this.repo.markStatus(payment.id, 'FAILED', {
-        error: serializedError
-      })
-      await this.repo.appendLog(payment.id, {
-        event: 'CHECKOUT_CREATION_FAILED',
-        timestamp: new Date().toISOString(),
-        details: serializedError
-      })
-      throw error
+    return {
+      payment: this.toPaymentSummary(storedPayment),
+      checkoutUrl: `${baseUrl}/api/payments/checkout/${storedPayment.id}`,
+      purchaseUrl: config.purchaseUrl,
+      purchasePayload: signedPayload
     }
   }
 
-  async getCheckoutPage(paymentId: string): Promise<PaywayCheckoutPageResult> {
+  async getCheckoutPage(
+    paymentId: string,
+    logger: FastifyBaseLogger
+  ): Promise<PaywayCheckoutPageResult> {
     const payment = await this.repo.findById(paymentId)
     if (!payment) {
       throw new Error('Payment not found')
     }
 
-    const html = payment.payway?.checkoutHtml
-    if (!html) {
-      throw new Error('Hosted checkout is not available')
+    const cachedHtml = payment.payway?.checkoutHtml
+    if (cachedHtml) {
+      return { html: cachedHtml }
     }
 
-    return { html }
+    const purchaseRequest = payment.payway?.purchaseRequest
+    if (!purchaseRequest) {
+      throw new Error('Purchase request is not available')
+    }
+
+    const config = this.getConfig()
+    const purchasePayload = {
+      ...purchaseRequest,
+      hash: generatePurchaseHash(purchaseRequest, config.apiKey)
+    }
+    const purchaseResponse = await this.fetchPurchaseSession(
+      purchasePayload,
+      config.purchaseUrl,
+      logger
+    )
+    const html = this.resolveCheckoutHtml(payment.orderId, payment.amount, purchaseResponse)
+
+    await this.repo.storeCheckoutHtml(payment.id, html)
+    await this.repo.appendLog(payment.id, {
+      event: 'CHECKOUT_PAGE_RENDERED',
+      timestamp: new Date().toISOString(),
+      details: {
+        providerStatus: typeof purchaseResponse === 'string'
+          ? 'HTML'
+          : purchaseResponse.status?.code,
+        tranId: payment.tranId
+      }
+    })
+
+    return {
+      html
+    }
   }
 
   async processWebhook(
@@ -209,47 +238,267 @@ export class PaymentService {
   }): PaywayPurchaseRequest {
     const returnUrl = input.config.returnUrl ?? `${input.baseUrl}/api/payments/return`
     const cancelUrl = input.config.cancelUrl ?? `${input.baseUrl}/api/payments/cancel`
+    const continueSuccessUrl = input.config.continueSuccessUrl
 
     return {
       req_time: buildRequestTime(),
       merchant_id: input.config.merchantId,
       tran_id: input.tranId,
-      amount: input.amount,
+      amount: input.amount.toFixed(2),
       type: 'purchase',
       currency: 'USD',
       return_params: input.orderId,
-      return_url: encodeBase64Value(returnUrl),
-      cancel_url: cancelUrl
+      return_url: returnUrl,
+      cancel_url: cancelUrl,
+      ...(continueSuccessUrl ? { continue_success_url: continueSuccessUrl } : {})
     }
   }
 
-  private async fetchHostedCheckoutHtml(
-    request: PaywayPurchaseRequest,
-    config: PaywayConfig,
+  private async fetchPurchaseSession(
+    purchasePayload: PaywayPurchaseRequest & { hash: string },
+    purchaseUrl: string,
     logger: FastifyBaseLogger
-  ): Promise<string> {
-    const payload = {
-      ...request,
-      hash: generatePurchaseHash(request, config.apiKey)
-    }
-
+  ): Promise<string | PaywayPurchaseApiResponse> {
     const response = await this.withRetry(
-      async () => axios.postForm<string>(config.purchaseUrl, payload, {
+      async () => axios.postForm<string>(purchaseUrl, purchasePayload, {
         responseType: 'text',
         timeout: 15000,
         headers: {
-          Accept: 'text/html'
+          Accept: 'text/html,application/json'
         }
       }),
       logger,
       'purchase'
     )
 
-    if (typeof response.data !== 'string' || !response.data.includes('<html')) {
-      throw new Error('PayWay purchase API did not return hosted checkout HTML')
+    return response.data
+  }
+
+  private resolveCheckoutHtml(
+    orderId: string,
+    amount: number,
+    response: string | PaywayPurchaseApiResponse
+  ): string {
+    if (typeof response === 'string') {
+      const trimmedResponse = response.trim()
+      if (trimmedResponse.toLowerCase().includes('<html')) {
+        return response
+      }
+
+      try {
+        const parsed = JSON.parse(trimmedResponse) as PaywayPurchaseApiResponse
+        return this.renderCheckoutResponse(orderId, amount, parsed)
+      } catch {
+        return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Payment Unavailable</title>
+  </head>
+  <body>
+    <h1>Payment Unavailable</h1>
+    <p>PayWay did not return a valid checkout page.</p>
+    <pre>${this.escapeHtml(trimmedResponse)}</pre>
+  </body>
+</html>`
+      }
     }
 
-    return response.data
+    return this.renderCheckoutResponse(orderId, amount, response)
+  }
+
+  private renderCheckoutResponse(
+    orderId: string,
+    amount: number,
+    response: PaywayPurchaseApiResponse
+  ): string {
+    const hostedCheckoutUrl = this.buildHostedCheckoutUrl(orderId, amount, response)
+    if (hostedCheckoutUrl) {
+      return this.renderHostedCheckoutRedirectPage(hostedCheckoutUrl)
+    }
+
+    return this.renderHostedCheckoutPage(orderId, amount, response)
+  }
+
+  private renderHostedCheckoutPage(
+    orderId: string,
+    amount: number,
+    response: PaywayPurchaseApiResponse
+  ): string {
+    const qrImage = response.data?.image ?? response.qrImage
+    const qrString = response.qrString
+    const providerCode = String(response.status?.code ?? '')
+    const providerMessage = String(response.status?.message ?? response.description ?? 'Unable to initialize PayWay checkout')
+
+    if (providerCode !== '00' || !qrImage) {
+      return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Payment Unavailable</title>
+  </head>
+  <body>
+    <h1>Payment Unavailable</h1>
+    <p>${this.escapeHtml(providerMessage)}</p>
+  </body>
+</html>`
+    }
+
+    const escapedQrString = qrString ? this.escapeHtml(qrString) : ''
+
+    return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PayWay Checkout</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Arial, sans-serif;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #f4f7fb;
+        color: #122033;
+      }
+      main {
+        width: min(92vw, 440px);
+        background: #ffffff;
+        border: 1px solid #d7e0ea;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 18px 48px rgba(18, 32, 51, 0.12);
+        text-align: center;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+      p {
+        margin: 8px 0;
+      }
+      img {
+        display: block;
+        width: min(100%, 280px);
+        margin: 24px auto;
+        border-radius: 12px;
+      }
+      code {
+        display: block;
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: 10px;
+        background: #eef3f8;
+        word-break: break-all;
+        text-align: left;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Scan To Pay</h1>
+      <p>Order: ${this.escapeHtml(orderId)}</p>
+      <p>Amount: $${this.escapeHtml(amount.toFixed(2))}</p>
+      <img src="${this.escapeHtml(qrImage)}" alt="PayWay QR code" />
+      <p>Complete the payment in your ABA app, then wait for webhook confirmation.</p>
+      ${escapedQrString ? `<code>${escapedQrString}</code>` : ''}
+    </main>
+  </body>
+</html>`
+  }
+
+  private buildHostedCheckoutUrl(
+    orderId: string,
+    amount: number,
+    response: PaywayPurchaseApiResponse
+  ): string | null {
+    const qrString = response.qrString
+    if (!qrString) {
+      return null
+    }
+
+    const checkoutData = {
+      status: response.status ?? {
+        code: '00',
+        message: 'Success!',
+        lang: 'en'
+      },
+      step: 'abapay_khqr_request_qr',
+      qr_string: qrString,
+      transaction_summary: {
+        order_details: {
+          subtotal: amount,
+          vat_enabled: '0',
+          vat: '0',
+          shipping: 0,
+          vat_amount: 0,
+          transaction_fee: 0,
+          total: amount,
+          currency: 'USD'
+        },
+        merchant: {
+          name: process.env.APP_NAME?.trim() || 'Fastify Ecommerce API',
+          logo: '',
+          primary_color: '#201B44',
+          cancel_url: '',
+          themes: 'default',
+          font_family: 'SF_Pro_Display',
+          font_size: 14,
+          bg_color: '#ffffff',
+          border_radius: 6
+        }
+      },
+      payment_options: {
+        abapay: {
+          label: 'ABA Pay'
+        }
+      },
+      expire_in: Math.floor(Date.now() / 1000) + 900,
+      expire_in_sec: '900',
+      render_qr_page: 1,
+      order_id: orderId
+    }
+
+    const token = Buffer.from(JSON.stringify(checkoutData), 'utf8').toString('base64')
+    const config = this.getConfig()
+
+    return `${config.checkoutBaseUrl}/${encodeURIComponent(token)}`
+  }
+
+  private renderHostedCheckoutRedirectPage(hostedCheckoutUrl: string): string {
+    const escapedUrl = this.escapeHtml(hostedCheckoutUrl)
+
+    return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Redirecting To PayWay</title>
+    <meta http-equiv="refresh" content="0;url=${escapedUrl}" />
+  </head>
+  <body>
+    <p>Redirecting to PayWay checkout...</p>
+    <p><a href="${escapedUrl}">Continue</a></p>
+    <script>
+      window.location.replace(${JSON.stringify(hostedCheckoutUrl)});
+    </script>
+  </body>
+</html>`
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
   }
 
   private async fetchTransactionDetail(
@@ -309,11 +558,15 @@ export class PaymentService {
       purchaseUrl:
         process.env.PAYWAY_PURCHASE_URL?.trim() ||
         'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase',
+      checkoutBaseUrl:
+        process.env.PAYWAY_CHECKOUT_BASE_URL?.trim() ||
+        'https://checkout-sandbox.payway.com.kh',
       transactionDetailUrl:
         process.env.PAYWAY_CHECK_TRANSACTION_URL?.trim() ||
         'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/check-transaction-2',
       returnUrl: this.getOptionalEnv('PAYWAY_RETURN_URL'),
-      cancelUrl: this.getOptionalEnv('PAYWAY_CANCEL_URL')
+      cancelUrl: this.getOptionalEnv('PAYWAY_CANCEL_URL'),
+      continueSuccessUrl: this.getOptionalEnv('PAYWAY_CONTINUE_SUCCESS_URL')
     }
   }
 
@@ -358,27 +611,6 @@ export class PaymentService {
     }
 
     throw new Error(`PayWay ${operationName} failed`)
-  }
-
-  private serializeProviderError(error: unknown): Record<string, unknown> {
-    if (axios.isAxiosError(error)) {
-      return {
-        code: error.code,
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
-      }
-    }
-
-    if (error instanceof Error) {
-      return {
-        message: error.message
-      }
-    }
-
-    return {
-      message: 'Unknown PayWay error'
-    }
   }
 
   private toPaymentSummary(payment: Payment & { _id?: unknown; id?: string }): PaymentSummary {
