@@ -9,6 +9,12 @@ A minimal Fastify + TypeScript baseline ready for implementing the ecommerce API
 - `ACCESS_TOKEN_TTL=1h`
 - `REFRESH_TOKEN_TTL_DAYS=30`
 - `RESET_PASSWORD_TOKEN_TTL_MINUTES=15`
+- `PAYWAY_MERCHANT_ID=your-payway-merchant-id`
+- `PAYWAY_API_KEY=your-payway-api-key`
+- `PAYWAY_PURCHASE_URL=https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase`
+- `PAYWAY_CHECK_TRANSACTION_URL=https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/transaction-detail`
+- `PAYWAY_RETURN_URL=https://your-domain/api/payments/return`
+- `PAYWAY_CANCEL_URL=https://your-domain/api/payments/cancel`
 
 ## Available Scripts
 
@@ -63,6 +69,14 @@ On Render, create a new `Web Service`, choose `Docker`, and point it at this rep
 - `RESET_PASSWORD_TOKEN_TTL_MINUTES`
 
 Render injects `PORT` automatically. The container starts with `dist/app.js` and listens on `0.0.0.0:$PORT`.
+
+## Payments API (`/api/payments`)
+
+- `POST /api/payments/create-checkout` - create a pending PayWay checkout session from `amount` and `orderId`
+- `GET /api/payments/checkout/:paymentId` - serve the stored PayWay hosted checkout HTML
+- `POST /api/payments/webhook` - verify the PayWay callback and update payment status
+- `GET /api/payments/return` - browser return page for UX only
+- `GET /api/payments/cancel` - browser cancel page for UX only
 
 ## Authentication API (`/api/v1/auth`)
 

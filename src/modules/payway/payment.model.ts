@@ -2,13 +2,13 @@ import { Model, Schema, model, models, Types } from 'mongoose'
 import type { PaymentProviderState, PaymentStatus } from './payway.types'
 
 export interface Payment {
-  userId: Types.ObjectId
+  userId?: Types.ObjectId
+  orderId: string
   tranId: string
   amount: number
   currency: string
   status: PaymentStatus
-  paymentMethod?: string
-  paywayResponse?: PaymentProviderState
+  payway?: PaymentProviderState
   createdAt: Date
   updatedAt: Date
 }
@@ -16,8 +16,13 @@ export interface Payment {
 const paymentSchema = new Schema<Payment>({
   userId: {
     type: Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    ref: 'User'
+  },
+  orderId: {
+    type: String,
+    required: true,
+    unique: true,
+    index: true
   },
   tranId: {
     type: String,
@@ -35,13 +40,10 @@ const paymentSchema = new Schema<Payment>({
   },
   status: {
     type: String,
-    enum: ['PENDING', 'PAID', 'FAILED'],
+    enum: ['PENDING', 'SUCCESS', 'FAILED'],
     default: 'PENDING'
   },
-  paymentMethod: {
-    type: String
-  },
-  paywayResponse: {
+  payway: {
     type: Schema.Types.Mixed
   }
 }, {

@@ -3,12 +3,15 @@ import { PaymentModel } from './payment.model'
 import type {
   PaywayCallbackPayload,
   PaywayCheckTransactionResponse,
-  PaywayPurchaseResponse
+  PaywayLogEntry,
+  PaywayPurchaseRequest,
+  PaymentStatus
 } from './payway.types'
 
 export class PaymentRepository {
   async create(data: {
-    userId: string | Types.ObjectId
+    userId?: string | Types.ObjectId
+    orderId: string
     tranId: string
     amount: number
     currency?: string
@@ -20,63 +23,73 @@ export class PaymentRepository {
     })
   }
 
+  async findById(id: string) {
+    return PaymentModel.findById(id)
+  }
+
+  async findByOrderId(orderId: string) {
+    return PaymentModel.findOne({ orderId })
+  }
+
   async findByTranId(tranId: string) {
     return PaymentModel.findOne({ tranId })
   }
 
-  async findByTranIdForUser(tranId: string, userId: string | Types.ObjectId) {
-    return PaymentModel.findOne({ tranId, userId })
-  }
-
-  async recordPurchaseInitiation(tranId: string, purchase: PaywayPurchaseResponse) {
+  async updatePendingPaymentByOrderId(orderId: string, data: {
+    tranId: string
+    amount: number
+    currency: string
+    purchaseRequest: PaywayPurchaseRequest
+  }) {
     return PaymentModel.findOneAndUpdate(
-      { tranId },
+      { orderId },
       {
         $set: {
-          'paywayResponse.purchase': purchase
+          tranId: data.tranId,
+          amount: data.amount,
+          currency: data.currency,
+          status: 'PENDING',
+          'payway.purchaseRequest': data.purchaseRequest,
+          'payway.checkoutHtml': null,
+          'payway.callback': null,
+          'payway.verification': null,
+          'payway.lastError': null
         }
       },
       { new: true }
     )
   }
 
-  async recordPurchaseRequest(tranId: string, purchaseRequest: Record<string, unknown>) {
-    return PaymentModel.findOneAndUpdate(
-      { tranId },
+  async storeCheckoutHtml(paymentId: string, html: string) {
+    return PaymentModel.findByIdAndUpdate(
+      paymentId,
       {
         $set: {
-          'paywayResponse.purchaseRequest': purchaseRequest
-        }
-      },
-      { new: true }
-    )
-  }
-
-  async markAsPaid(
-    tranId: string,
-    payload: {
-      callback: PaywayCallbackPayload
-      verification: PaywayCheckTransactionResponse
-    }
-  ) {
-    return PaymentModel.findOneAndUpdate(
-      { tranId },
-      {
-        $set: {
-          status: 'PAID',
-          'paywayResponse.callback': payload.callback,
-          'paywayResponse.verification': payload.verification
+          'payway.checkoutHtml': html
         },
         $unset: {
-          'paywayResponse.lastError': 1
+          'payway.lastError': 1
         }
       },
       { new: true }
     )
   }
 
-  async markAsFailed(
-    tranId: string,
+  async recordPurchaseRequest(paymentId: string, purchaseRequest: PaywayPurchaseRequest) {
+    return PaymentModel.findByIdAndUpdate(
+      paymentId,
+      {
+        $set: {
+          'payway.purchaseRequest': purchaseRequest
+        }
+      },
+      { new: true }
+    )
+  }
+
+  async markStatus(
+    paymentId: string,
+    status: PaymentStatus,
     payload: {
       callback?: PaywayCallbackPayload
       verification?: PaywayCheckTransactionResponse
@@ -84,13 +97,25 @@ export class PaymentRepository {
     }
   ) {
     return PaymentModel.findOneAndUpdate(
-      { tranId },
+      { _id: paymentId },
       {
         $set: {
-          status: 'FAILED',
-          ...(payload.callback ? { 'paywayResponse.callback': payload.callback } : {}),
-          ...(payload.verification ? { 'paywayResponse.verification': payload.verification } : {}),
-          ...(payload.error ? { 'paywayResponse.lastError': payload.error } : {})
+          status,
+          ...(payload.callback ? { 'payway.callback': payload.callback } : {}),
+          ...(payload.verification ? { 'payway.verification': payload.verification } : {}),
+          ...(payload.error ? { 'payway.lastError': payload.error } : {})
+        }
+      },
+      { new: true }
+    )
+  }
+
+  async appendLog(paymentId: string, log: PaywayLogEntry) {
+    return PaymentModel.findByIdAndUpdate(
+      paymentId,
+      {
+        $push: {
+          'payway.logs': log
         }
       },
       { new: true }

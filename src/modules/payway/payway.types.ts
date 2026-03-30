@@ -1,48 +1,43 @@
-export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED'
+export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED'
+
+export interface PaywayLogEntry {
+  event: string
+  timestamp: string
+  details?: Record<string, unknown>
+}
 
 export interface PaywayPurchaseRequest {
   req_time: string
   merchant_id: string
   tran_id: string
   amount: number
-  currency: string
+  items?: string
+  shipping?: number
+  ctid?: string
+  pwt?: string
   firstname?: string
   lastname?: string
   email?: string
   phone?: string
+  type?: string
   payment_option?: string
-  return_params?: string
+  currency: string
+  return_params: string
   return_url?: string
   cancel_url?: string
+  continue_success_url?: string
+  return_deeplink?: string
+  custom_fields?: string
 }
 
-export interface CreateHostedCheckoutInput {
+export interface CreateCheckoutInput {
   amount: number
-  currency?: string
-  paymentOption?: string
-  phone?: string
-  returnParams?: string
-}
-
-export interface PaywayPurchaseResponse {
-  status?: {
-    code?: string | number
-    message?: string
-    tran_id?: string
-    pw_tran_id?: string
-    [key: string]: unknown
-  }
-  description?: string
-  qrString?: string
-  qrImage?: string
-  abapay_deeplink?: string
-  app_store?: string
-  play_store?: string
-  [key: string]: unknown
+  orderId: string
 }
 
 export interface PaymentSummary {
   id: string
+  orderId: string
   tranId: string
   amount: number
   currency: string
@@ -51,30 +46,27 @@ export interface PaymentSummary {
   updatedAt: string
 }
 
-export interface PaywayCheckoutData {
-  kind: 'qr'
-  qrString?: string
-  qrImage?: string
-  deepLink?: string
-  appStoreUrl?: string
-  playStoreUrl?: string
-  providerMessage?: string
+export interface CreateCheckoutResult {
+  payment: PaymentSummary
+  checkoutUrl: string
 }
 
-export interface PaywayCreatePaymentResult {
-  payment: PaymentSummary
-  checkout: PaywayCheckoutData
-  providerResponse: PaywayPurchaseResponse
+export interface PaywayCheckoutPageResult {
+  html: string
 }
 
-export interface PaywayHostedCheckoutResult {
-  payment: PaymentSummary
-  checkoutHtml: string
-  checkoutPayload: Record<string, unknown>
+export interface PaywayPurchaseResponse {
+  html: string
 }
 
-export interface PaywayHostedCheckoutSessionResult {
-  payment: PaymentSummary
+export interface PaywayTransactionData {
+  payment_status_code?: number | string
+  payment_status?: string
+  total_amount?: number | string
+  payment_currency?: string
+  apv?: string
+  transaction_date?: string
+  [key: string]: unknown
 }
 
 export interface PaywayCallbackPayload {
@@ -82,19 +74,12 @@ export interface PaywayCallbackPayload {
   status: string | number
   apv?: string
   return_params?: string
+  hash?: string
   [key: string]: unknown
 }
 
 export interface PaywayCheckTransactionResponse {
-  data?: {
-    payment_status_code?: number | string
-    payment_status?: string
-    total_amount?: number
-    payment_currency?: string
-    apv?: string
-    transaction_date?: string
-    [key: string]: unknown
-  }
+  data?: PaywayTransactionData
   status?: {
     code?: string
     message?: string
@@ -105,8 +90,9 @@ export interface PaywayCheckTransactionResponse {
 
 export interface PaymentProviderState {
   purchaseRequest?: PaywayPurchaseRequest
-  purchase?: PaywayPurchaseResponse
+  checkoutHtml?: string
   callback?: PaywayCallbackPayload
   verification?: PaywayCheckTransactionResponse
   lastError?: Record<string, unknown>
+  logs?: PaywayLogEntry[]
 }

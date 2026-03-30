@@ -1,295 +1,317 @@
 import axios from 'axios'
-import {
-  buildPaywayHashValues,
-  encodePaywayUrl,
-  generatePaywayHash,
-  generatePaywayTransactionId,
-  getPaywayRequestTime,
-  verifyPaywayCallbackSignature
-} from './payway-hash'
-import type {
-  CreateHostedCheckoutInput,
-  PaymentSummary,
-  PaywayCallbackPayload,
-  PaywayCheckoutData,
-  PaywayCheckTransactionResponse,
-  PaywayCreatePaymentResult,
-  PaywayHostedCheckoutResult,
-  PaywayHostedCheckoutSessionResult,
-  PaywayPurchaseResponse,
-  PaywayPurchaseRequest
-} from './payway.types'
+import type { FastifyBaseLogger } from 'fastify'
 import { PaymentRepository } from './payment.repository'
 import type { Payment } from './payment.model'
+import {
+  buildRequestTime,
+  encodeBase64Value,
+  extractCallbackSignature,
+  generatePurchaseHash,
+  generateTransactionDetailHash,
+  generateTransactionId,
+  verifyCallbackHash
+} from './payway.util'
+import type {
+  CreateCheckoutInput,
+  CreateCheckoutResult,
+  PaywayCallbackPayload,
+  PaywayCheckTransactionResponse,
+  PaywayCheckoutPageResult,
+  PaywayPurchaseRequest,
+  PaymentSummary
+} from './payway.types'
 
-const PAYWAY_PURCHASE_HASH_ORDER: Array<keyof PaywayPurchaseRequest> = [
-  'req_time',
-  'merchant_id',
-  'tran_id',
-  'amount',
-  'currency',
-  'payment_option',
-  'return_url',
-  'cancel_url',
-  'return_params'
-]
+type PaywayConfig = {
+  apiKey: string
+  merchantId: string
+  purchaseUrl: string
+  transactionDetailUrl: string
+  returnUrl?: string
+  cancelUrl?: string
+}
 
 export class PaymentService {
-  private repo = new PaymentRepository()
+  constructor(private readonly repo = new PaymentRepository()) {}
 
-  async createHostedCheckoutSession(
-    userId: string,
-    input: CreateHostedCheckoutInput
-  ): Promise<PaywayHostedCheckoutSessionResult> {
-    const { payment } = await this.preparePurchase(userId, input)
-
-    return {
-      payment: this.toPaymentSummary(payment)
-    }
-  }
-
-  async createHostedCheckout(
-    userId: string,
-    input: CreateHostedCheckoutInput
-  ): Promise<PaywayHostedCheckoutResult> {
-    const { payment, requestData, config } = await this.preparePurchase(userId, input)
-    const hash = generatePaywayHash(
-      buildPaywayHashValues(requestData, PAYWAY_PURCHASE_HASH_ORDER),
-      config.apiKey
-    )
-    const checkoutHtml = this.renderHostedCheckoutPage(config.purchaseUrl, {
-      ...requestData,
-      hash
-    })
-
-    return {
-      payment: this.toPaymentSummary(payment),
-      checkoutHtml,
-      checkoutPayload: {
-        ...requestData,
-        hash,
-        actionUrl: config.purchaseUrl
-      }
-    }
-  }
-
-  async getHostedCheckoutForUser(userId: string, tranId: string): Promise<PaywayHostedCheckoutResult> {
-    const payment = await this.repo.findByTranIdForUser(tranId, userId)
-    if (!payment) {
-      throw new Error('Payment not found')
+  async createCheckout(
+    input: CreateCheckoutInput,
+    baseUrl: string,
+    logger: FastifyBaseLogger
+  ): Promise<CreateCheckoutResult> {
+    const normalizedOrderId = input.orderId.trim()
+    if (!normalizedOrderId) {
+      throw new Error('orderId is required')
     }
 
-    const requestData = payment.paywayResponse?.purchaseRequest
-    if (!requestData) {
-      throw new Error('Hosted checkout request is not available')
+    if (!Number.isFinite(input.amount) || input.amount <= 0) {
+      throw new Error('amount must be a positive number')
     }
 
     const config = this.getConfig()
-    const hash = generatePaywayHash(
-      buildPaywayHashValues(requestData, PAYWAY_PURCHASE_HASH_ORDER),
-      config.apiKey
-    )
-    const checkoutHtml = this.renderHostedCheckoutPage(config.purchaseUrl, {
-      ...requestData,
-      hash
+    const existingPayment = await this.repo.findByOrderId(normalizedOrderId)
+    if (existingPayment?.status === 'SUCCESS') {
+      throw new Error('Payment already completed for this order')
+    }
+
+    const tranId = generateTransactionId()
+    const request = this.buildPurchaseRequest({
+      amount: Number(input.amount.toFixed(2)),
+      orderId: normalizedOrderId,
+      tranId,
+      baseUrl,
+      config
     })
 
-    return {
-      payment: this.toPaymentSummary(payment),
-      checkoutHtml,
-      checkoutPayload: {
-        ...requestData,
-        hash,
-        actionUrl: config.purchaseUrl
-      }
-    }
-  }
+    const payment = existingPayment
+      ? await this.repo.updatePendingPaymentByOrderId(normalizedOrderId, {
+        tranId,
+        amount: request.amount,
+        currency: request.currency,
+        purchaseRequest: request
+      })
+      : await this.repo.create({
+        orderId: normalizedOrderId,
+        tranId,
+        amount: request.amount,
+        currency: request.currency
+      })
 
-  async createPayment(userId: string, amount: number): Promise<PaywayCreatePaymentResult> {
-    const { payment, requestData, config } = await this.preparePurchase(userId, { amount })
+    if (!payment) {
+      throw new Error('Unable to create payment')
+    }
+
+    await this.repo.recordPurchaseRequest(payment.id, request)
+    await this.repo.appendLog(payment.id, {
+      event: 'CHECKOUT_CREATED',
+      timestamp: new Date().toISOString(),
+      details: {
+        amount: request.amount,
+        orderId: normalizedOrderId,
+        tranId
+      }
+    })
 
     try {
-      const res = await axios.postForm(config.purchaseUrl, {
-        ...requestData,
-        hash: generatePaywayHash(
-          buildPaywayHashValues(requestData, PAYWAY_PURCHASE_HASH_ORDER),
-          config.apiKey
-        )
-      })
-      const providerResponse = res.data as PaywayPurchaseResponse
+      const hostedCheckoutHtml = await this.fetchHostedCheckoutHtml(request, config, logger)
+      const storedPayment = await this.repo.storeCheckoutHtml(payment.id, hostedCheckoutHtml)
 
-      const storedPayment = await this.repo.recordPurchaseInitiation(payment.tranId, providerResponse)
+      if (!storedPayment) {
+        throw new Error('Unable to persist hosted checkout HTML')
+      }
+
+      await this.repo.appendLog(storedPayment.id, {
+        event: 'CHECKOUT_HTML_STORED',
+        timestamp: new Date().toISOString(),
+        details: {
+          tranId
+        }
+      })
 
       return {
-        payment: this.toPaymentSummary(storedPayment ?? payment),
-        checkout: this.toCheckoutData(providerResponse),
-        providerResponse
+        payment: this.toPaymentSummary(storedPayment),
+        checkoutUrl: `${baseUrl}/api/payments/checkout/${storedPayment.id}`
       }
     } catch (error) {
-      await this.repo.markAsFailed(payment.tranId, {
-        error: this.serializeProviderError(error)
+      const serializedError = this.serializeProviderError(error)
+      await this.repo.markStatus(payment.id, 'FAILED', {
+        error: serializedError
+      })
+      await this.repo.appendLog(payment.id, {
+        event: 'CHECKOUT_CREATION_FAILED',
+        timestamp: new Date().toISOString(),
+        details: serializedError
       })
       throw error
     }
   }
 
-  async handleCallback(payload: PaywayCallbackPayload) {
-    const tranId = String(payload.tran_id ?? '').trim()
-    if (tranId.length === 0) {
-      throw new Error('tran_id is required')
-    }
-
-    const payment = await this.repo.findByTranId(tranId)
-    if (!payment) throw new Error('Payment not found')
-
-    if (payment.status === 'PAID') {
-      return payment
-    }
-
-    const verification = await this.checkTransaction(tranId)
-    const providerStatusCode = String(verification.status?.code ?? '')
-    const paymentStatusCode = Number(verification.data?.payment_status_code)
-    const verifiedAmount = Number(verification.data?.total_amount)
-    const verifiedCurrency = String(verification.data?.payment_currency ?? '')
-    const matchesAmount = Number.isFinite(verifiedAmount) && verifiedAmount === payment.amount
-    const matchesCurrency = verifiedCurrency.length === 0 || verifiedCurrency === payment.currency
-    const isPaid =
-      providerStatusCode === '00' &&
-      paymentStatusCode === 0 &&
-      matchesAmount &&
-      matchesCurrency
-
-    if (isPaid) {
-      return this.repo.markAsPaid(tranId, {
-        callback: payload,
-        verification
-      })
-    }
-
-    return this.repo.markAsFailed(tranId, {
-      callback: payload,
-      verification
-    })
-  }
-
-  verifyCallbackSignature(payload: Record<string, unknown>, signature: string): boolean {
-    return verifyPaywayCallbackSignature(payload, this.getConfig().apiKey, signature)
-  }
-
-  async getPaymentStatusForUser(userId: string, tranId: string) {
-    const payment = await this.repo.findByTranIdForUser(tranId, userId)
+  async getCheckoutPage(paymentId: string): Promise<PaywayCheckoutPageResult> {
+    const payment = await this.repo.findById(paymentId)
     if (!payment) {
       throw new Error('Payment not found')
     }
 
-    return {
-      payment: this.toPaymentSummary(payment),
-      provider: {
-        purchaseStatusCode: payment.paywayResponse?.purchase?.status?.code,
-        purchaseStatusMessage: payment.paywayResponse?.purchase?.status?.message,
-        verificationStatusCode: payment.paywayResponse?.verification?.status?.code,
-        verificationStatusMessage: payment.paywayResponse?.verification?.status?.message,
-        paymentStatus: payment.paywayResponse?.verification?.data?.payment_status,
-        paymentStatusCode: payment.paywayResponse?.verification?.data?.payment_status_code
-      }
+    const html = payment.payway?.checkoutHtml
+    if (!html) {
+      throw new Error('Hosted checkout is not available')
     }
+
+    return { html }
   }
 
-  private async preparePurchase(userId: string, input: CreateHostedCheckoutInput) {
-    const amount = input.amount
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new Error('amount must be a positive number')
+  async processWebhook(
+    payload: PaywayCallbackPayload,
+    signatureHeader: string | undefined,
+    logger: FastifyBaseLogger
+  ): Promise<PaymentSummary> {
+    const tranId = String(payload.tran_id ?? '').trim()
+    if (!tranId) {
+      throw new Error('tran_id is required')
+    }
+
+    const payment = await this.repo.findByTranId(tranId)
+    if (!payment) {
+      throw new Error('Payment not found')
     }
 
     const config = this.getConfig()
-    const tranId = generatePaywayTransactionId()
-    const currency = input.currency?.trim() || 'USD'
-    const requestData: PaywayPurchaseRequest = {
-      req_time: getPaywayRequestTime(),
-      merchant_id: config.merchantId,
-      tran_id: tranId,
-      amount,
-      currency
+    const signature = extractCallbackSignature(payload, signatureHeader)
+    if (!verifyCallbackHash(payload, config.apiKey, signature)) {
+      await this.repo.appendLog(payment.id, {
+        event: 'WEBHOOK_SIGNATURE_REJECTED',
+        timestamp: new Date().toISOString(),
+        details: {
+          tranId
+        }
+      })
+      throw new Error('Invalid PayWay webhook signature')
     }
 
-    const normalizedPhone = input.phone?.trim()
-    if (normalizedPhone) {
-      requestData.phone = normalizedPhone
-    }
-
-    const normalizedPaymentOption = input.paymentOption?.trim()
-    if (normalizedPaymentOption) {
-      requestData.payment_option = normalizedPaymentOption
-    }
-
-    const normalizedReturnParams = input.returnParams?.trim()
-    if (normalizedReturnParams) {
-      requestData.return_params = normalizedReturnParams
-    }
-
-    if (config.returnUrl) {
-      requestData.return_url = encodePaywayUrl(config.returnUrl)
-    }
-
-    if (config.cancelUrl) {
-      requestData.cancel_url = encodePaywayUrl(config.cancelUrl)
-    }
-
-    const payment = await this.repo.create({
-      userId,
-      tranId,
-      amount,
-      currency: requestData.currency
+    await this.repo.appendLog(payment.id, {
+      event: 'WEBHOOK_RECEIVED',
+      timestamp: new Date().toISOString(),
+      details: {
+        status: payload.status,
+        tranId
+      }
     })
 
-    const storedPayment = await this.repo.recordPurchaseRequest(
-      tranId,
-      requestData as unknown as Record<string, unknown>
-    )
+    const verification = await this.fetchTransactionDetail(tranId, config, logger)
+    const nextStatus = this.resolveStatus(payment, payload, verification)
+
+    const updatedPayment = await this.repo.markStatus(payment.id, nextStatus, {
+      callback: payload,
+      verification
+    })
+
+    if (!updatedPayment) {
+      throw new Error('Unable to update payment status')
+    }
+
+    await this.repo.appendLog(updatedPayment.id, {
+      event: `PAYMENT_${nextStatus}`,
+      timestamp: new Date().toISOString(),
+      details: {
+        providerStatus: verification.status?.code,
+        paymentStatusCode: verification.data?.payment_status_code
+      }
+    })
+
+    return this.toPaymentSummary(updatedPayment)
+  }
+
+  private buildPurchaseRequest(input: {
+    amount: number
+    orderId: string
+    tranId: string
+    baseUrl: string
+    config: PaywayConfig
+  }): PaywayPurchaseRequest {
+    const returnUrl = input.config.returnUrl ?? `${input.baseUrl}/api/payments/return`
+    const cancelUrl = input.config.cancelUrl ?? `${input.baseUrl}/api/payments/cancel`
 
     return {
-      config,
-      payment: storedPayment ?? payment,
-      requestData
+      req_time: buildRequestTime(),
+      merchant_id: input.config.merchantId,
+      tran_id: input.tranId,
+      amount: input.amount,
+      type: 'purchase',
+      currency: 'USD',
+      return_params: input.orderId,
+      return_url: encodeBase64Value(returnUrl),
+      cancel_url: cancelUrl
     }
   }
 
-  private async checkTransaction(tranId: string): Promise<PaywayCheckTransactionResponse> {
-    const config = this.getConfig()
-    const requestTime = getPaywayRequestTime()
+  private async fetchHostedCheckoutHtml(
+    request: PaywayPurchaseRequest,
+    config: PaywayConfig,
+    logger: FastifyBaseLogger
+  ): Promise<string> {
     const payload = {
-      req_time: requestTime,
-      merchant_id: config.merchantId,
-      tran_id: tranId
+      ...request,
+      hash: generatePurchaseHash(request, config.apiKey)
     }
-    const checkTransactionHashValues = buildPaywayHashValues(payload, [
-      'req_time',
-      'merchant_id',
-      'tran_id'
-    ])
 
-    const response = await axios.postForm(
-      config.checkTransactionUrl,
-      {
-        ...payload,
-        hash: generatePaywayHash(checkTransactionHashValues, config.apiKey)
-      }
+    const response = await this.withRetry(
+      async () => axios.postForm<string>(config.purchaseUrl, payload, {
+        responseType: 'text',
+        timeout: 15000,
+        headers: {
+          Accept: 'text/html'
+        }
+      }),
+      logger,
+      'purchase'
     )
 
-    return response.data as PaywayCheckTransactionResponse
+    if (typeof response.data !== 'string' || !response.data.includes('<html')) {
+      throw new Error('PayWay purchase API did not return hosted checkout HTML')
+    }
+
+    return response.data
   }
 
-  private getConfig() {
+  private async fetchTransactionDetail(
+    tranId: string,
+    config: PaywayConfig,
+    logger: FastifyBaseLogger
+  ): Promise<PaywayCheckTransactionResponse> {
+    const reqTime = buildRequestTime()
+    const hash = generateTransactionDetailHash(
+      reqTime,
+      config.merchantId,
+      tranId,
+      config.apiKey
+    )
+
+    const response = await this.withRetry(
+      async () => axios.postForm<PaywayCheckTransactionResponse>(config.transactionDetailUrl, {
+        req_time: reqTime,
+        merchant_id: config.merchantId,
+        tran_id: tranId,
+        hash
+      }, {
+        timeout: 15000
+      }),
+      logger,
+      'transaction-detail'
+    )
+
+    return response.data
+  }
+
+  private resolveStatus(
+    payment: Payment,
+    payload: PaywayCallbackPayload,
+    verification: PaywayCheckTransactionResponse
+  ): 'SUCCESS' | 'FAILED' {
+    const verificationCode = String(verification.status?.code ?? '')
+    const paymentStatusCode = Number(verification.data?.payment_status_code)
+    const providerAmount = Number(verification.data?.total_amount)
+    const providerCurrency = String(verification.data?.payment_currency ?? '')
+    const callbackStatus = String(payload.status ?? '')
+
+    const amountMatches = Number.isFinite(providerAmount) && providerAmount === payment.amount
+    const currencyMatches = !providerCurrency || providerCurrency === payment.currency
+    const providerAccepted = verificationCode === '00' && paymentStatusCode === 0
+    const callbackAccepted = callbackStatus === '0' || callbackStatus.toUpperCase() === 'SUCCESS'
+
+    return providerAccepted && callbackAccepted && amountMatches && currencyMatches
+      ? 'SUCCESS'
+      : 'FAILED'
+  }
+
+  private getConfig(): PaywayConfig {
     return {
       apiKey: this.getRequiredEnv('PAYWAY_API_KEY'),
       merchantId: this.getRequiredEnv('PAYWAY_MERCHANT_ID'),
       purchaseUrl:
-        process.env.PAYWAY_PURCHASE_URL ??
-        process.env.PAYWAY_API_URL ??
+        process.env.PAYWAY_PURCHASE_URL?.trim() ||
         'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase',
-      checkTransactionUrl:
-        process.env.PAYWAY_CHECK_TRANSACTION_URL ??
-        'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/transaction-detail',
+      transactionDetailUrl:
+        process.env.PAYWAY_CHECK_TRANSACTION_URL?.trim() ||
+        'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/check-transaction-2',
       returnUrl: this.getOptionalEnv('PAYWAY_RETURN_URL'),
       cancelUrl: this.getOptionalEnv('PAYWAY_CANCEL_URL')
     }
@@ -306,15 +328,39 @@ export class PaymentService {
 
   private getOptionalEnv(name: string): string | undefined {
     const value = process.env[name]?.trim()
-
-    if (!value) {
-      return undefined
-    }
-
-    return value
+    return value || undefined
   }
 
-  private serializeProviderError(error: unknown) {
+  private async withRetry<T>(
+    operation: () => Promise<T>,
+    logger: FastifyBaseLogger,
+    operationName: string
+  ): Promise<T> {
+    const attempts = 3
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        return await operation()
+      } catch (error) {
+        const isLastAttempt = attempt === attempts
+        logger.warn({
+          err: error,
+          operation: operationName,
+          attempt
+        }, 'PayWay request failed')
+
+        if (isLastAttempt) {
+          throw error
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, attempt * 500))
+      }
+    }
+
+    throw new Error(`PayWay ${operationName} failed`)
+  }
+
+  private serializeProviderError(error: unknown): Record<string, unknown> {
     if (axios.isAxiosError(error)) {
       return {
         code: error.code,
@@ -335,67 +381,10 @@ export class PaymentService {
     }
   }
 
-  private renderHostedCheckoutPage(actionUrl: string, fields: Record<string, unknown>) {
-    const hiddenInputs = Object.entries(fields)
-      .filter(([, value]) => value !== null && value !== undefined)
-      .map(([key, value]) => {
-        return `<input type="hidden" name="${this.escapeHtml(key)}" value="${this.escapeHtml(String(value))}" />`
-      })
-      .join('\n          ')
-
-    return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Redirecting to PayWay Checkout</title>
-  </head>
-  <body>
-    <form method="POST" id="payway_checkout_form" action="${this.escapeHtml(actionUrl)}">
-          ${hiddenInputs}
-      <noscript>
-        <button type="submit">Continue to PayWay Checkout</button>
-      </noscript>
-    </form>
-    <script>
-      document.getElementById('payway_checkout_form').submit();
-    </script>
-  </body>
-</html>`
-  }
-
-  private escapeHtml(value: string) {
-    return value
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;')
-  }
-
-  private toCheckoutData(providerResponse: PaywayPurchaseResponse): PaywayCheckoutData {
-    return {
-      kind: 'qr',
-      qrString: typeof providerResponse.qrString === 'string' ? providerResponse.qrString : undefined,
-      qrImage: typeof providerResponse.qrImage === 'string' ? providerResponse.qrImage : undefined,
-      deepLink:
-        typeof providerResponse.abapay_deeplink === 'string'
-          ? providerResponse.abapay_deeplink
-          : undefined,
-      appStoreUrl:
-        typeof providerResponse.app_store === 'string' ? providerResponse.app_store : undefined,
-      playStoreUrl:
-        typeof providerResponse.play_store === 'string' ? providerResponse.play_store : undefined,
-      providerMessage:
-        typeof providerResponse.status?.message === 'string'
-          ? providerResponse.status.message
-          : undefined
-    }
-  }
-
   private toPaymentSummary(payment: Payment & { _id?: unknown; id?: string }): PaymentSummary {
     return {
       id: payment.id ?? String(payment._id),
+      orderId: payment.orderId,
       tranId: payment.tranId,
       amount: payment.amount,
       currency: payment.currency,
