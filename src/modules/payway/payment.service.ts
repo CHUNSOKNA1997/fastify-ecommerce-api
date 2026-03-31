@@ -25,6 +25,7 @@ import type {
 type PaywayConfig = {
   apiKey: string
   merchantId: string
+  merchantDisplayName: string
   purchaseUrl: string
   checkoutBaseUrl: string
   transactionDetailUrl: string
@@ -449,6 +450,7 @@ export class PaymentService {
     checkoutExpiresAt: string | undefined,
     response: PaywayPurchaseApiResponse
   ): string | null {
+    const config = this.getConfig()
     const qrString = response.qrString
     if (!qrString) {
       return null
@@ -474,7 +476,7 @@ export class PaymentService {
           currency: 'USD'
         },
         merchant: {
-          name: process.env.APP_NAME?.trim() || 'Fastify Ecommerce API',
+          name: config.merchantDisplayName,
           logo: '',
           primary_color: '#201B44',
           cancel_url: '',
@@ -497,7 +499,6 @@ export class PaymentService {
     }
 
     const token = Buffer.from(JSON.stringify(checkoutData), 'utf8').toString('base64')
-    const config = this.getConfig()
 
     return `${config.checkoutBaseUrl}/${encodeURIComponent(token)}`
   }
@@ -595,6 +596,10 @@ export class PaymentService {
     return {
       apiKey: this.getRequiredEnv('PAYWAY_API_KEY'),
       merchantId: this.getRequiredEnv('PAYWAY_MERCHANT_ID'),
+      merchantDisplayName:
+        process.env.PAYWAY_MERCHANT_DISPLAY_NAME?.trim() ||
+        process.env.APP_NAME?.trim() ||
+        'PhsarRohas',
       purchaseUrl:
         process.env.PAYWAY_PURCHASE_URL?.trim() ||
         'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase',
