@@ -52,7 +52,13 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    * @response 500 - Internal server error
    */
   fastify.get('/users/profile', {
-    preHandler: fastify.authenticate
+    preHandler: fastify.authenticate,
+    schema: {
+      tags: ['Account'],
+      summary: 'Get profile',
+      description: 'Return the authenticated user profile.',
+      security: [{ bearerAuth: [] }]
+    }
   }, async (request) => {
     const user = await findUserById(request.user.sub)
     if (!user) {
@@ -83,6 +89,10 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
   fastify.patch<{ Body: UpdateProfileBody }>('/users/profile', {
     preHandler: fastify.authenticate,
     schema: {
+      tags: ['Account'],
+      summary: 'Update profile',
+      description: 'Update the authenticated user profile.',
+      security: [{ bearerAuth: [] }],
       body: {
         type: 'object',
         required: ['firstName', 'lastName'],
@@ -128,7 +138,13 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    * @response 500 - Internal server error
    */
   fastify.get('/wishlist', {
-    preHandler: fastify.authenticate
+    preHandler: fastify.authenticate,
+    schema: {
+      tags: ['Wishlist'],
+      summary: 'Get wishlist',
+      description: 'Return the authenticated user wishlist.',
+      security: [{ bearerAuth: [] }]
+    }
   }, async (request) => {
     const wishlist = await findOrCreateWishlistByUserId(request.user.sub)
 
@@ -150,6 +166,10 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
   fastify.post<{ Body: WishlistBody }>('/wishlist/items', {
     preHandler: fastify.authenticate,
     schema: {
+      tags: ['Wishlist'],
+      summary: 'Add wishlist item',
+      description: 'Add a product to the authenticated user wishlist.',
+      security: [{ bearerAuth: [] }],
       body: {
         type: 'object',
         required: ['productId'],
@@ -195,6 +215,10 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
   fastify.delete<{ Params: WishlistParams }>('/wishlist/items/:productId', {
     preHandler: fastify.authenticate,
     schema: {
+      tags: ['Wishlist'],
+      summary: 'Remove wishlist item',
+      description: 'Remove a product from the authenticated user wishlist.',
+      security: [{ bearerAuth: [] }],
       params: {
         type: 'object',
         required: ['productId'],

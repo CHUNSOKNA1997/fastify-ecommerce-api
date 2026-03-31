@@ -88,6 +88,9 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    */
   fastify.get<{ Querystring: ProductListQuery }>('/products', {
     schema: {
+      tags: ['Catalog'],
+      summary: 'List products',
+      description: 'List products with optional search and category filtering.',
       querystring: {
         type: 'object',
         additionalProperties: false,
@@ -115,7 +118,13 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    * @response 404 - Not found
    * @response 500 - Internal server error
    */
-  fastify.get('/categories', async () => {
+  fastify.get('/categories', {
+    schema: {
+      tags: ['Catalog'],
+      summary: 'List categories',
+      description: 'Return the list of product categories.'
+    }
+  }, async () => {
     return {
       items: await listCategories()
     }
@@ -133,6 +142,9 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    */
   fastify.get<{ Params: ProductParams }>('/products/:productId', {
     schema: {
+      tags: ['Catalog'],
+      summary: 'Get product detail',
+      description: 'Return a single product by its identifier.',
       params: {
         type: 'object',
         required: ['productId'],
@@ -164,7 +176,13 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    * @response 500 - Internal server error
    */
   fastify.get('/cart', {
-    preHandler: fastify.authenticate
+    preHandler: fastify.authenticate,
+    schema: {
+      tags: ['Cart'],
+      summary: 'Get cart',
+      description: 'Return the authenticated user cart.',
+      security: [{ bearerAuth: [] }]
+    }
   }, async (request) => {
     const cart = await findOrCreateCartByUserId(request.user.sub)
 
@@ -186,6 +204,10 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
   fastify.post<{ Body: CartItemBody }>('/cart/items', {
     preHandler: fastify.authenticate,
     schema: {
+      tags: ['Cart'],
+      summary: 'Add cart item',
+      description: 'Add a product to the authenticated user cart.',
+      security: [{ bearerAuth: [] }],
       body: {
         type: 'object',
         required: ['productId', 'quantity'],
@@ -231,6 +253,10 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
   fastify.patch<{ Params: CartItemParams, Body: CartItemUpdateBody }>('/cart/items/:itemId', {
     preHandler: fastify.authenticate,
     schema: {
+      tags: ['Cart'],
+      summary: 'Update cart item',
+      description: 'Update the quantity of a cart item.',
+      security: [{ bearerAuth: [] }],
       params: {
         type: 'object',
         required: ['itemId'],
@@ -273,6 +299,10 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
   fastify.delete<{ Params: CartItemParams }>('/cart/items/:itemId', {
     preHandler: fastify.authenticate,
     schema: {
+      tags: ['Cart'],
+      summary: 'Remove cart item',
+      description: 'Remove a cart item from the authenticated user cart.',
+      security: [{ bearerAuth: [] }],
       params: {
         type: 'object',
         required: ['itemId'],
@@ -305,7 +335,13 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    * @response 500 - Internal server error
    */
   fastify.delete('/cart', {
-    preHandler: fastify.authenticate
+    preHandler: fastify.authenticate,
+    schema: {
+      tags: ['Cart'],
+      summary: 'Clear cart',
+      description: 'Remove all items from the authenticated user cart.',
+      security: [{ bearerAuth: [] }]
+    }
   }, async (request) => {
     const cart = await clearCart(request.user.sub)
 
@@ -326,7 +362,13 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    * @response 500 - Internal server error
    */
   fastify.post('/orders', {
-    preHandler: fastify.authenticate
+    preHandler: fastify.authenticate,
+    schema: {
+      tags: ['Orders'],
+      summary: 'Create order',
+      description: 'Create an order from the authenticated user cart.',
+      security: [{ bearerAuth: [] }]
+    }
   }, async (request, reply) => {
     const cart = await findOrCreateCartByUserId(request.user.sub)
     if (cart.items.length === 0) {
@@ -378,7 +420,13 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    * @response 500 - Internal server error
    */
   fastify.get('/orders', {
-    preHandler: fastify.authenticate
+    preHandler: fastify.authenticate,
+    schema: {
+      tags: ['Orders'],
+      summary: 'List orders',
+      description: 'List orders for the authenticated user.',
+      security: [{ bearerAuth: [] }]
+    }
   }, async (request) => {
     const orders = await listOrdersByUserId(request.user.sub)
 

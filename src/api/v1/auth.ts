@@ -105,6 +105,9 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 	 */
 	fastify.post<{ Body: RegisterBody }>('/register', {
 		schema: {
+			tags: ['Auth'],
+			summary: 'Register user',
+			description: 'Create a new user account and return access and refresh tokens.',
 			body: {
 				type: 'object',
 				required: ['firstName', 'lastName', 'email', 'password', 'confirmPassword'],
@@ -159,6 +162,9 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 	 */
 	fastify.post<{ Body: LoginBody }>('/login', {
 		schema: {
+			tags: ['Auth'],
+			summary: 'Login user',
+			description: 'Authenticate a user with email and password.',
 			body: {
 				type: 'object',
 				required: ['email', 'password'],
@@ -196,6 +202,9 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 	 */
 	fastify.post<{ Body: RefreshBody }>('/refresh', {
 		schema: {
+			tags: ['Auth'],
+			summary: 'Refresh access token',
+			description: 'Exchange a valid refresh token for a new access token and refresh token.',
 			body: {
 				type: 'object',
 				required: ['refreshToken'],
@@ -257,6 +266,9 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 	 */
 	fastify.post<{ Body: ForgotPasswordBody }>('/forgot-password', {
 		schema: {
+			tags: ['Auth'],
+			summary: 'Forgot password',
+			description: 'Request a password reset token. In non-production environments the token is returned in the response.',
 			body: {
 				type: 'object',
 				required: ['email'],
@@ -302,6 +314,9 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 	 */
 	fastify.post<{ Body: ResetPasswordBody }>('/reset-password', {
 		schema: {
+			tags: ['Auth'],
+			summary: 'Reset password',
+			description: 'Reset a user password using a valid reset token.',
 			body: {
 				type: 'object',
 				required: ['resetToken', 'password', 'confirmPassword'],
@@ -360,7 +375,13 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 	 * @response 500 - Internal server error
 	 */
 	fastify.get('/me', {
-		preHandler: fastify.authenticate
+		preHandler: fastify.authenticate,
+		schema: {
+			tags: ['Auth'],
+			summary: 'Get current user',
+			description: 'Return the authenticated user profile.',
+			security: [{ bearerAuth: [] }]
+		}
 	}, async (request) => {
 		const user = await findUserById(request.user.sub)
 		if (!user) {
@@ -388,7 +409,13 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 	 * @response 500 - Internal server error
 	 */
 	fastify.post('/logout', {
-		preHandler: fastify.authenticate
+		preHandler: fastify.authenticate,
+		schema: {
+			tags: ['Auth'],
+			summary: 'Logout user',
+			description: 'Invalidate the current user sessions by rotating token version and revoking refresh tokens.',
+			security: [{ bearerAuth: [] }]
+		}
 	}, async (request) => {
 		await revokeAllUserRefreshTokens(request.user.sub)
 		await incrementUserTokenVersion(request.user.sub)
