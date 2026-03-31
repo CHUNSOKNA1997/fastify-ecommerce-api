@@ -11,6 +11,7 @@ type UpdateProfileBody = {
   firstName: string
   lastName: string
   phone?: string
+  avatarPath?: string
 }
 
 type WishlistBody = {
@@ -71,7 +72,8 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
-        phone: user.phone ?? null
+        phone: user.phone ?? null,
+        avatarPath: user.avatarPath
       }
     }
   })
@@ -100,7 +102,8 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
         properties: {
           firstName: { type: 'string', minLength: 1, maxLength: 100 },
           lastName: { type: 'string', minLength: 1, maxLength: 100 },
-          phone: { type: 'string', minLength: 1, maxLength: 30 }
+          phone: { type: 'string', minLength: 1, maxLength: 30 },
+          avatarPath: { type: 'string', minLength: 1, maxLength: 500 }
         }
       }
     }
@@ -108,7 +111,8 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     const updatedUser = await updateUserProfile(request.user.sub, {
       firstName: request.body.firstName.trim(),
       lastName: request.body.lastName.trim(),
-      phone: request.body.phone
+      phone: request.body.phone,
+      avatarPath: request.body.avatarPath
     })
 
     if (!updatedUser) {
@@ -122,7 +126,8 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
         firstName: updatedUser.firstName,
         lastName: updatedUser.lastName,
         email: updatedUser.email,
-        phone: updatedUser.phone ?? null
+        phone: updatedUser.phone ?? null,
+        avatarPath: updatedUser.avatarPath
       }
     }
   })

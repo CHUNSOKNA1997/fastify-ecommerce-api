@@ -1,5 +1,5 @@
 import { HydratedDocument } from 'mongoose'
-import { User, UserModel } from './user.model'
+import { DEFAULT_USER_AVATAR_PATH, User, UserModel } from './user.model'
 
 export interface UserRecord {
   id: string
@@ -7,6 +7,7 @@ export interface UserRecord {
   lastName: string
   email: string
   phone?: string
+  avatarPath: string
   passwordHash: string
   tokenVersion: number
 }
@@ -22,6 +23,7 @@ function toUserRecord(user: HydratedDocument<User>): UserRecord {
     lastName: user.lastName,
     email: user.email,
     phone: user.phone,
+    avatarPath: user.avatarPath || DEFAULT_USER_AVATAR_PATH,
     passwordHash: user.passwordHash,
     tokenVersion: user.tokenVersion
   }
@@ -98,16 +100,28 @@ export async function updateUserProfile(
     firstName: string
     lastName: string
     phone?: string
+    avatarPath?: string
   }
 ): Promise<UserRecord | null> {
+  const profileUpdates: {
+    firstName: string
+    lastName: string
+    phone?: string
+    avatarPath?: string
+  } = {
+    firstName: input.firstName,
+    lastName: input.lastName,
+    phone: input.phone?.trim() || undefined
+  }
+
+  if (input.avatarPath !== undefined) {
+    profileUpdates.avatarPath = input.avatarPath.trim() || DEFAULT_USER_AVATAR_PATH
+  }
+
   const user = await UserModel.findByIdAndUpdate(
     id,
     {
-      $set: {
-        firstName: input.firstName,
-        lastName: input.lastName,
-        phone: input.phone?.trim() || undefined
-      }
+      $set: profileUpdates
     },
     { new: true }
   )

@@ -74,7 +74,7 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		return ttlMinutes
 	}
 
-	async function buildAuthResponse(user: { id: string, firstName: string, lastName: string, email: string, tokenVersion: number }) {
+	async function buildAuthResponse(user: { id: string, firstName: string, lastName: string, email: string, avatarPath: string, tokenVersion: number }) {
 		const accessToken = fastify.jwt.sign(
 			{ sub: user.id, email: user.email, tokenVersion: user.tokenVersion },
 			{ expiresIn: getAccessTokenTtl() }
@@ -86,7 +86,8 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 				id: user.id,
 				firstName: user.firstName,
 				lastName: user.lastName,
-				email: user.email
+				email: user.email,
+				avatarPath: user.avatarPath
 			},
 			accessToken,
 			refreshToken: issuedRefreshToken.token,

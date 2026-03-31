@@ -7,6 +7,9 @@ export type CatalogProduct = {
   imagePath: string
   rating: number
   isFavorite: boolean
+  isNewArrival: boolean
+  isTrending: boolean
+  isPopularNearYou: boolean
 }
 
 export const fallbackCatalog: CatalogProduct[] = [
@@ -17,9 +20,12 @@ export const fallbackCatalog: CatalogProduct[] = [
       'Crafted with attention to detail and designed for everyday confidence, this shirt blends comfort, style, and versatility.',
     price: 4000,
     category: 'Unisex Wear',
-    imagePath: 'assets/images/purple_hoodie.png',
+    imagePath: '/assets/images/purple-hoodie.svg',
     rating: 4.5,
-    isFavorite: false
+    isFavorite: false,
+    isNewArrival: false,
+    isTrending: false,
+    isPopularNearYou: true
   },
   {
     id: '2',
@@ -27,9 +33,12 @@ export const fallbackCatalog: CatalogProduct[] = [
     description: 'A stylish and comfortable jacket perfect for any occasion.',
     price: 5500,
     category: 'Female Wear',
-    imagePath: 'assets/images/orange_coat.png',
+    imagePath: '/assets/images/orange-coat.svg',
     rating: 4.8,
-    isFavorite: false
+    isFavorite: false,
+    isNewArrival: true,
+    isTrending: true,
+    isPopularNearYou: true
   },
   {
     id: '3',
@@ -37,9 +46,12 @@ export const fallbackCatalog: CatalogProduct[] = [
     description: 'A clean silhouette with all-day comfort and an athletic edge.',
     price: 2500.89,
     category: 'Male Wear',
-    imagePath: 'assets/images/orange_coat.png',
+    imagePath: '/assets/images/city-walk-sneaker.svg',
     rating: 4.3,
-    isFavorite: false
+    isFavorite: false,
+    isNewArrival: false,
+    isTrending: false,
+    isPopularNearYou: false
   },
   {
     id: '4',
@@ -47,8 +59,11 @@ export const fallbackCatalog: CatalogProduct[] = [
     description: 'A relaxed everyday essential designed for easy layering.',
     price: 6340,
     category: 'Male Wear',
-    imagePath: 'assets/images/purple_hoodie.png',
+    imagePath: '/assets/images/purple-hoodie.svg',
     rating: 4.6,
-    isFavorite: false
+    isFavorite: false,
+    isNewArrival: true,
+    isTrending: true,
+    isPopularNearYou: true
   }
 ]

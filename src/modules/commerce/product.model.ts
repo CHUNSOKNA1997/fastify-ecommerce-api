@@ -8,6 +8,9 @@ export interface Product {
   imagePath: string
   rating: number
   isFavorite: boolean
+  isNewArrival: boolean
+  isTrending: boolean
+  isPopularNearYou: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -46,6 +49,21 @@ const productSchema = new Schema<Product>({
     default: 0
   },
   isFavorite: {
+    type: Boolean,
+    required: true,
+    default: false
+  },
+  isNewArrival: {
+    type: Boolean,
+    required: true,
+    default: false
+  },
+  isTrending: {
+    type: Boolean,
+    required: true,
+    default: false
+  },
+  isPopularNearYou: {
     type: Boolean,
     required: true,
     default: false

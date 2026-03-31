@@ -1,10 +1,13 @@
 import { Model, Schema, model, models } from 'mongoose'
 
+export const DEFAULT_USER_AVATAR_PATH = '/assets/images/user/user-avatar.png'
+
 export interface User {
   firstName: string
   lastName: string
   email: string
   phone?: string
+  avatarPath: string
   passwordHash: string
   tokenVersion: number
   createdAt: Date
@@ -32,6 +35,12 @@ const userSchema = new Schema<User>({
   phone: {
     type: String,
     trim: true
+  },
+  avatarPath: {
+    type: String,
+    required: true,
+    trim: true,
+    default: DEFAULT_USER_AVATAR_PATH
   },
   passwordHash: {
     type: String,

@@ -6,10 +6,15 @@ import {
   removeCartItem,
   updateCartItemQuantity
 } from '../../modules/commerce/cart.repository'
+import { listBanners } from '../../modules/commerce/banner.repository'
 import {
   findProductById,
   listCategories,
+  listNewArrivals,
+  listPopularNearYou,
   listProducts
+  ,
+  listTrendingNow
 } from '../../modules/commerce/product.repository'
 import {
   createOrder,
@@ -76,6 +81,18 @@ function serializeCart(cart: Awaited<ReturnType<typeof findOrCreateCartByUserId>
  * @param fastify 
  */
 const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
+  fastify.get('/banner', {
+    schema: {
+      tags: ['Catalog'],
+      summary: 'List banners',
+      description: 'Return home screen banner items for the storefront carousel.'
+    }
+  }, async () => {
+    return {
+      items: await listBanners()
+    }
+  })
+
   /**
    * List products
    * @route GET /products
@@ -105,6 +122,42 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
     return {
       items: products
+    }
+  })
+
+  fastify.get('/products/new-arrivals', {
+    schema: {
+      tags: ['Catalog'],
+      summary: 'List new arrivals',
+      description: 'Return recently added products for the home screen.'
+    }
+  }, async () => {
+    return {
+      items: await listNewArrivals()
+    }
+  })
+
+  fastify.get('/products/trending-now', {
+    schema: {
+      tags: ['Catalog'],
+      summary: 'List trending products',
+      description: 'Return trending products ranked by favorite flag and rating.'
+    }
+  }, async () => {
+    return {
+      items: await listTrendingNow()
+    }
+  })
+
+  fastify.get('/products/popular-near-you', {
+    schema: {
+      tags: ['Catalog'],
+      summary: 'List popular near you',
+      description: 'Return high-performing products for local popularity sections.'
+    }
+  }, async () => {
+    return {
+      items: await listPopularNearYou()
     }
   })
 

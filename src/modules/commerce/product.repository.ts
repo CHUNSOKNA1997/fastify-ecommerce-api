@@ -10,6 +10,9 @@ type ProductSummary = {
   imagePath: string
   rating: number
   isFavorite: boolean
+  isNewArrival: boolean
+  isTrending: boolean
+  isPopularNearYou: boolean
 }
 
 function toProductSummary(product: {
@@ -22,6 +25,9 @@ function toProductSummary(product: {
   imagePath: string
   rating: number
   isFavorite: boolean
+  isNewArrival?: boolean
+  isTrending?: boolean
+  isPopularNearYou?: boolean
 }): ProductSummary {
   return {
     id: product.id ?? String(product._id),
@@ -31,8 +37,43 @@ function toProductSummary(product: {
     category: product.category,
     imagePath: product.imagePath,
     rating: product.rating,
-    isFavorite: product.isFavorite
+    isFavorite: product.isFavorite,
+    isNewArrival: product.isNewArrival ?? false,
+    isTrending: product.isTrending ?? false,
+    isPopularNearYou: product.isPopularNearYou ?? false
   }
+}
+
+function rankFallbackProducts(
+  selector: 'new-arrivals' | 'trending-now' | 'popular-near-you'
+): ProductSummary[] {
+  const products = fallbackCatalog.map((product, index) => ({
+    ...product,
+    isNewArrival: index >= fallbackCatalog.length - 2,
+    isTrending: product.isFavorite || product.rating >= 4.7,
+    isPopularNearYou: product.rating >= 4.5
+  }))
+
+  if (selector === 'new-arrivals') {
+    return products.reverse()
+  }
+
+  if (selector === 'trending-now') {
+    return products.sort((left, right) => {
+      const favoriteBoost = Number(right.isFavorite) - Number(left.isFavorite)
+      if (favoriteBoost !== 0) {
+        return favoriteBoost
+      }
+
+      return right.rating - left.rating
+    })
+  }
+
+  return products.sort((left, right) => {
+    const popularityLeft = left.rating * 100 + (left.isFavorite ? 25 : 0) + left.price / 100
+    const popularityRight = right.rating * 100 + (right.isFavorite ? 25 : 0) + right.price / 100
+    return popularityRight - popularityLeft
+  })
 }
 
 function searchFallbackCatalog(search?: string, category?: string): ProductSummary[] {
@@ -69,6 +110,33 @@ export async function listProducts(search?: string, category?: string): Promise<
   }
 
   return searchFallbackCatalog(search, category)
+}
+
+export async function listNewArrivals(limit = 10): Promise<ProductSummary[]> {
+  const products = await ProductModel.find({ isNewArrival: true }).sort({ createdAt: -1 }).limit(limit)
+  if (products.length > 0) {
+    return products.map(toProductSummary)
+  }
+
+  return rankFallbackProducts('new-arrivals').slice(0, limit)
+}
+
+export async function listTrendingNow(limit = 10): Promise<ProductSummary[]> {
+  const products = await ProductModel.find({ isTrending: true }).sort({ rating: -1, createdAt: -1 }).limit(limit)
+  if (products.length > 0) {
+    return products.map(toProductSummary)
+  }
+
+  return rankFallbackProducts('trending-now').slice(0, limit)
+}
+
+export async function listPopularNearYou(limit = 10): Promise<ProductSummary[]> {
+  const products = await ProductModel.find({ isPopularNearYou: true }).sort({ rating: -1, isFavorite: -1, price: -1 }).limit(limit)
+  if (products.length > 0) {
+    return products.map(toProductSummary)
+  }
+
+  return rankFallbackProducts('popular-near-you').slice(0, limit)
 }
 
 export async function findProductById(id: string): Promise<ProductSummary | null> {
