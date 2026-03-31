@@ -18,6 +18,7 @@ import type {
   PaywayCheckoutPageResult,
   PaywayPurchaseApiResponse,
   PaywayPurchaseRequest,
+  PaymentStatusResult,
   PaymentSummary
 } from './payway.types'
 
@@ -27,6 +28,8 @@ type PaywayConfig = {
   purchaseUrl: string
   checkoutBaseUrl: string
   transactionDetailUrl: string
+  requireWebhookSignature: boolean
+  webhookUrl?: string
   returnUrl?: string
   cancelUrl?: string
   continueSuccessUrl?: string
@@ -51,6 +54,7 @@ export class PaymentService {
 
     const config = this.getConfig()
     const normalizedAmount = Number(input.amount.toFixed(2))
+    const checkoutExpiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
     const existingPayment = await this.repo.findByOrderId(normalizedOrderId)
     if (existingPayment?.status === 'SUCCESS') {
       throw new Error('Payment already completed for this order')
@@ -70,7 +74,8 @@ export class PaymentService {
         tranId,
         amount: normalizedAmount,
         currency: request.currency,
-        purchaseRequest: request
+        purchaseRequest: request,
+        checkoutExpiresAt
       })
       : await this.repo.create({
         orderId: normalizedOrderId,
@@ -88,7 +93,7 @@ export class PaymentService {
       hash: generatePurchaseHash(request, config.apiKey)
     }
 
-    const storedPayment = await this.repo.recordPurchaseRequest(payment.id, request)
+    const storedPayment = await this.repo.recordPurchaseRequest(payment.id, request, checkoutExpiresAt)
     await this.repo.appendLog(payment.id, {
       event: 'CHECKOUT_CREATED',
       timestamp: new Date().toISOString(),
@@ -116,7 +121,20 @@ export class PaymentService {
       payment: this.toPaymentSummary(storedPayment),
       checkoutUrl: `${baseUrl}/api/payments/checkout/${storedPayment.id}`,
       purchaseUrl: config.purchaseUrl,
-      purchasePayload: signedPayload
+      purchasePayload: signedPayload,
+      expiresAt: checkoutExpiresAt
+    }
+  }
+
+  async getPaymentStatus(paymentId: string): Promise<PaymentStatusResult> {
+    const payment = await this.repo.findById(paymentId)
+    if (!payment) {
+      throw new Error('Payment not found')
+    }
+
+    return {
+      payment: this.toPaymentSummary(payment),
+      expiresAt: payment.payway?.checkoutExpiresAt
     }
   }
 
@@ -149,7 +167,12 @@ export class PaymentService {
       config.purchaseUrl,
       logger
     )
-    const html = this.resolveCheckoutHtml(payment.orderId, payment.amount, purchaseResponse)
+    const html = this.resolveCheckoutHtml(
+      payment.orderId,
+      payment.amount,
+      payment.payway?.checkoutExpiresAt,
+      purchaseResponse
+    )
 
     await this.repo.storeCheckoutHtml(payment.id, html)
     await this.repo.appendLog(payment.id, {
@@ -193,7 +216,10 @@ export class PaymentService {
           tranId
         }
       })
-      throw new Error('Invalid PayWay webhook signature')
+
+      if (config.requireWebhookSignature) {
+        throw new Error('Invalid PayWay webhook signature')
+      }
     }
 
     await this.repo.appendLog(payment.id, {
@@ -236,9 +262,11 @@ export class PaymentService {
     baseUrl: string
     config: PaywayConfig
   }): PaywayPurchaseRequest {
-    const returnUrl = input.config.returnUrl ?? `${input.baseUrl}/api/payments/return`
-    const cancelUrl = input.config.cancelUrl ?? `${input.baseUrl}/api/payments/cancel`
+    const webhookUrl = input.config.webhookUrl ?? `${input.baseUrl}/api/payments/webhook`
     const continueSuccessUrl = input.config.continueSuccessUrl
+      ?? input.config.returnUrl
+      ?? `${input.baseUrl}/api/payments/return`
+    const cancelUrl = input.config.cancelUrl ?? `${input.baseUrl}/api/payments/cancel`
 
     return {
       req_time: buildRequestTime(),
@@ -248,7 +276,7 @@ export class PaymentService {
       type: 'purchase',
       currency: 'USD',
       return_params: input.orderId,
-      return_url: returnUrl,
+      return_url: webhookUrl,
       cancel_url: cancelUrl,
       ...(continueSuccessUrl ? { continue_success_url: continueSuccessUrl } : {})
     }
@@ -277,6 +305,7 @@ export class PaymentService {
   private resolveCheckoutHtml(
     orderId: string,
     amount: number,
+    checkoutExpiresAt: string | undefined,
     response: string | PaywayPurchaseApiResponse
   ): string {
     if (typeof response === 'string') {
@@ -287,7 +316,7 @@ export class PaymentService {
 
       try {
         const parsed = JSON.parse(trimmedResponse) as PaywayPurchaseApiResponse
-        return this.renderCheckoutResponse(orderId, amount, parsed)
+        return this.renderCheckoutResponse(orderId, amount, checkoutExpiresAt, parsed)
       } catch {
         return `<!DOCTYPE html>
 <html lang="en">
@@ -305,15 +334,16 @@ export class PaymentService {
       }
     }
 
-    return this.renderCheckoutResponse(orderId, amount, response)
+    return this.renderCheckoutResponse(orderId, amount, checkoutExpiresAt, response)
   }
 
   private renderCheckoutResponse(
     orderId: string,
     amount: number,
+    checkoutExpiresAt: string | undefined,
     response: PaywayPurchaseApiResponse
   ): string {
-    const hostedCheckoutUrl = this.buildHostedCheckoutUrl(orderId, amount, response)
+    const hostedCheckoutUrl = this.buildHostedCheckoutUrl(orderId, amount, checkoutExpiresAt, response)
     if (hostedCheckoutUrl) {
       return this.renderHostedCheckoutRedirectPage(hostedCheckoutUrl)
     }
@@ -416,6 +446,7 @@ export class PaymentService {
   private buildHostedCheckoutUrl(
     orderId: string,
     amount: number,
+    checkoutExpiresAt: string | undefined,
     response: PaywayPurchaseApiResponse
   ): string | null {
     const qrString = response.qrString
@@ -459,7 +490,7 @@ export class PaymentService {
           label: 'ABA Pay'
         }
       },
-      expire_in: Math.floor(Date.now() / 1000) + 900,
+      expire_in: this.getCheckoutExpiryUnix(checkoutExpiresAt),
       expire_in_sec: '900',
       render_qr_page: 1,
       order_id: orderId
@@ -499,6 +530,15 @@ export class PaymentService {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;')
+  }
+
+  private getCheckoutExpiryUnix(checkoutExpiresAt: string | undefined): number {
+    const expiresAtMs = checkoutExpiresAt ? Date.parse(checkoutExpiresAt) : Number.NaN
+    if (Number.isFinite(expiresAtMs)) {
+      return Math.floor(expiresAtMs / 1000)
+    }
+
+    return Math.floor(Date.now() / 1000) + 900
   }
 
   private async fetchTransactionDetail(
@@ -564,6 +604,8 @@ export class PaymentService {
       transactionDetailUrl:
         process.env.PAYWAY_CHECK_TRANSACTION_URL?.trim() ||
         'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/check-transaction-2',
+      requireWebhookSignature: this.getBooleanEnv('PAYWAY_WEBHOOK_REQUIRE_SIGNATURE', false),
+      webhookUrl: this.getOptionalEnv('PAYWAY_WEBHOOK_URL'),
       returnUrl: this.getOptionalEnv('PAYWAY_RETURN_URL'),
       cancelUrl: this.getOptionalEnv('PAYWAY_CANCEL_URL'),
       continueSuccessUrl: this.getOptionalEnv('PAYWAY_CONTINUE_SUCCESS_URL')
@@ -582,6 +624,15 @@ export class PaymentService {
   private getOptionalEnv(name: string): string | undefined {
     const value = process.env[name]?.trim()
     return value || undefined
+  }
+
+  private getBooleanEnv(name: string, defaultValue: boolean): boolean {
+    const value = process.env[name]?.trim().toLowerCase()
+    if (!value) {
+      return defaultValue
+    }
+
+    return value === '1' || value === 'true' || value === 'yes'
   }
 
   private async withRetry<T>(

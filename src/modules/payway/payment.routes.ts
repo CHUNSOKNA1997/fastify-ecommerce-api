@@ -42,6 +42,23 @@ const paymentRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
     }
   }, controller.getCheckoutPage.bind(controller))
 
+  fastify.get('/status/:paymentId', {
+    schema: {
+      params: {
+        type: 'object',
+        required: ['paymentId'],
+        additionalProperties: false,
+        properties: {
+          paymentId: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 100
+          }
+        }
+      }
+    }
+  }, controller.getPaymentStatus.bind(controller))
+
   fastify.post('/webhook', {
     schema: {
       body: {

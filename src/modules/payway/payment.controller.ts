@@ -20,7 +20,8 @@ export class PaymentController {
       payment: result.payment,
       checkout_url: result.checkoutUrl,
       purchase_url: result.purchaseUrl,
-      purchase_payload: result.purchasePayload
+      purchase_payload: result.purchasePayload,
+      expires_at: result.expiresAt
     }
   }
 
@@ -50,6 +51,18 @@ export class PaymentController {
     return {
       message: 'Webhook processed',
       payment
+    }
+  }
+
+  async getPaymentStatus(
+    request: FastifyRequest<{ Params: { paymentId: string } }>,
+    reply: FastifyReply
+  ) {
+    const result = await this.paymentService.getPaymentStatus(request.params.paymentId)
+    reply.code(200)
+    return {
+      payment: result.payment,
+      expires_at: result.expiresAt
     }
   }
 

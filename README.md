@@ -12,9 +12,13 @@ A minimal Fastify + TypeScript baseline ready for implementing the ecommerce API
 - `PAYWAY_MERCHANT_ID=your-payway-merchant-id`
 - `PAYWAY_API_KEY=your-payway-api-key`
 - `PAYWAY_PURCHASE_URL=https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/purchase`
-- `PAYWAY_CHECK_TRANSACTION_URL=https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/transaction-detail`
-- `PAYWAY_RETURN_URL=https://your-domain/api/payments/return`
-- `PAYWAY_CANCEL_URL=https://your-domain/api/payments/cancel`
+- `PAYWAY_CHECKOUT_BASE_URL=https://checkout-sandbox.payway.com.kh`
+- `PAYWAY_CHECK_TRANSACTION_URL=https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/check-transaction-2`
+- `PAYWAY_WEBHOOK_URL=https://your-domain/api/payments/webhook`
+- `PAYWAY_WEBHOOK_REQUIRE_SIGNATURE=false` optional for sandbox if webhook signatures do not match yet
+- `PAYWAY_RETURN_URL=https://your-domain/api/payments/return` optional
+- `PAYWAY_CANCEL_URL=https://your-domain/api/payments/cancel` optional
+- `PAYWAY_CONTINUE_SUCCESS_URL=https://your-domain/api/payments/return` optional
 
 ## Available Scripts
 
@@ -72,8 +76,9 @@ Render injects `PORT` automatically. The container starts with `dist/app.js` and
 
 ## Payments API (`/api/payments`)
 
-- `POST /api/payments/create-checkout` - create a pending PayWay checkout session from `amount` and `orderId`
-- `GET /api/payments/checkout/:paymentId` - serve the stored PayWay hosted checkout HTML
+- `POST /api/payments/create-checkout` - create a pending PayWay payment and return `checkout_url`, purchase payload, and `expires_at`
+- `GET /api/payments/checkout/:paymentId` - redirect to the ABA-hosted KHQR checkout page
+- `GET /api/payments/status/:paymentId` - fetch current payment status and checkout expiry for polling
 - `POST /api/payments/webhook` - verify the PayWay callback and update payment status
 - `GET /api/payments/return` - browser return page for UX only
 - `GET /api/payments/cancel` - browser cancel page for UX only

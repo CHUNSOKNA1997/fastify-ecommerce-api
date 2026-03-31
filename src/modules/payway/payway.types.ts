@@ -57,10 +57,16 @@ export interface CreateCheckoutResult {
   checkoutUrl: string
   purchaseUrl: string
   purchasePayload: PaywayPurchaseRequest & { hash: string }
+  expiresAt: string
 }
 
 export interface PaywayCheckoutPageResult {
   html: string
+}
+
+export interface PaymentStatusResult {
+  payment: PaymentSummary
+  expiresAt?: string
 }
 
 export interface PaywayPurchaseApiResponse {
@@ -121,6 +127,7 @@ export interface PaywayCheckTransactionResponse {
 export interface PaymentProviderState {
   purchaseRequest?: PaywayPurchaseRequest
   checkoutHtml?: string
+  checkoutExpiresAt?: string
   callback?: PaywayCallbackPayload
   verification?: PaywayCheckTransactionResponse
   lastError?: Record<string, unknown>

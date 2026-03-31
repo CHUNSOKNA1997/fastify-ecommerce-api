@@ -40,6 +40,7 @@ export class PaymentRepository {
     amount: number
     currency: string
     purchaseRequest: PaywayPurchaseRequest
+    checkoutExpiresAt: string
   }) {
     return PaymentModel.findOneAndUpdate(
       { orderId },
@@ -50,6 +51,7 @@ export class PaymentRepository {
           currency: data.currency,
           status: 'PENDING',
           'payway.purchaseRequest': data.purchaseRequest,
+          'payway.checkoutExpiresAt': data.checkoutExpiresAt,
           'payway.checkoutHtml': null,
           'payway.callback': null,
           'payway.verification': null,
@@ -75,12 +77,13 @@ export class PaymentRepository {
     )
   }
 
-  async recordPurchaseRequest(paymentId: string, purchaseRequest: PaywayPurchaseRequest) {
+  async recordPurchaseRequest(paymentId: string, purchaseRequest: PaywayPurchaseRequest, checkoutExpiresAt: string) {
     return PaymentModel.findByIdAndUpdate(
       paymentId,
       {
         $set: {
-          'payway.purchaseRequest': purchaseRequest
+          'payway.purchaseRequest': purchaseRequest,
+          'payway.checkoutExpiresAt': checkoutExpiresAt
         }
       },
       { new: true }
