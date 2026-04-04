@@ -1,7 +1,4 @@
-import { createWriteStream } from 'node:fs'
-import { mkdir } from 'node:fs/promises'
-import { extname, join } from 'node:path'
-import { pipeline } from 'node:stream/promises'
+import { extname } from 'node:path'
 import { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { findUserById, updateUserProfile } from '../../modules/auth/user.repository'
 import { findProductById } from '../../modules/commerce/product.repository'
@@ -11,6 +8,7 @@ import {
   removeWishlistItem
 } from '../../modules/commerce/wishlist.repository'
 import { DEFAULT_USER_AVATAR_PATH } from '../../modules/auth/user.model'
+import { supabase, SUPABASE_AVATAR_BUCKET } from '../../lib/supabase'
 
 type UpdateProfileBody = {
   firstName: string
@@ -42,7 +40,6 @@ function serializeWishlist(wishlist: Awaited<ReturnType<typeof findOrCreateWishl
   }
 }
 
-const AVATAR_UPLOAD_DIR = join(process.cwd(), 'public', 'uploads', 'avatars')
 const ALLOWED_AVATAR_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const ALLOWED_AVATAR_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif'])
 
@@ -87,6 +84,46 @@ function isAllowedAvatarFile(filename?: string, mimetype?: string): boolean {
   return ALLOWED_AVATAR_EXTENSIONS.has(extension)
 }
 
+async function uploadAvatarToSupabase(
+  part: any,
+  userId: string,
+  fastify: Parameters<FastifyPluginAsync>[0]
+): Promise<string> {
+  const extension = resolveAvatarExtension(part.filename, part.mimetype)
+  const fileName = `${userId}-${Date.now()}${extension}`
+  const storagePath = `avatars/${userId}/${fileName}`
+  const chunks: Buffer[] = []
+
+  for await (const chunk of part.file) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+
+  const fileBuffer = Buffer.concat(chunks)
+
+  const { error } = await supabase.storage
+    .from(SUPABASE_AVATAR_BUCKET)
+    .upload(storagePath, fileBuffer, {
+      contentType: part.mimetype || 'application/octet-stream',
+      upsert: true,
+      cacheControl: '3600'
+    })
+
+  if (error) {
+    fastify.log.error(error)
+    throw fastify.httpErrors.internalServerError('Failed to upload avatar')
+  }
+
+  const { data } = supabase.storage
+    .from(SUPABASE_AVATAR_BUCKET)
+    .getPublicUrl(storagePath)
+
+  if (!data.publicUrl) {
+    throw fastify.httpErrors.internalServerError('Failed to resolve avatar URL')
+  }
+
+  return data.publicUrl
+}
+
 async function storeAvatarUpload(
   request: FastifyRequest & { parts: () => AsyncIterable<any> },
   userId: string,
@@ -119,14 +156,7 @@ async function storeAvatarUpload(
         throw fastify.httpErrors.badRequest('Avatar must be a JPEG, PNG, WEBP, or GIF image')
       }
 
-      await mkdir(AVATAR_UPLOAD_DIR, { recursive: true })
-
-      const extension = resolveAvatarExtension(part.filename, part.mimetype)
-      const fileName = `${userId}-${Date.now()}${extension}`
-      const filePath = join(AVATAR_UPLOAD_DIR, fileName)
-
-      await pipeline(part.file, createWriteStream(filePath))
-      updates.avatarPath = `/uploads/avatars/${fileName}`
+      updates.avatarPath = await uploadAvatarToSupabase(part, userId, fastify)
       continue
     }
 

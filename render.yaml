@@ -11,6 +11,12 @@ services:
         generateValue: true
       - key: MONGODB_URI
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_AVATAR_BUCKET
+        value: avatars
       - key: ACCESS_TOKEN_TTL
         value: 1h
       - key: REFRESH_TOKEN_TTL_DAYS

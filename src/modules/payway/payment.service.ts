@@ -160,9 +160,13 @@ export class PaymentService {
     }
 
     const config = this.getConfig()
-    const purchasePayload = {
+    const refreshedPurchaseRequest = {
       ...purchaseRequest,
-      hash: generatePurchaseHash(purchaseRequest, config.apiKey)
+      req_time: buildRequestTime()
+    }
+    const purchasePayload = {
+      ...refreshedPurchaseRequest,
+      hash: generatePurchaseHash(refreshedPurchaseRequest, config.apiKey)
     }
     const purchaseResponse = await this.fetchPurchaseSession(
       purchasePayload,
