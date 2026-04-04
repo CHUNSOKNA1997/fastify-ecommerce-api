@@ -6,6 +6,7 @@ export interface Product {
   price: number
   category: string
   imagePath: string
+  imagePaths: string[]
   rating: number
   isFavorite: boolean
   isNewArrival: boolean
@@ -40,6 +41,15 @@ const productSchema = new Schema<Product>({
     type: String,
     required: true,
     trim: true
+  },
+  imagePaths: {
+    type: [String],
+    required: true,
+    default: [],
+    validate: {
+      validator: (value: string[]) => Array.isArray(value) && value.every((item) => typeof item === 'string' && item.trim().length > 0),
+      message: 'imagePaths must contain valid image urls'
+    }
   },
   rating: {
     type: Number,

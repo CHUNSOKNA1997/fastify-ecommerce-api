@@ -48,10 +48,6 @@ type ResetPasswordBody = {
 }
 
 const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
-	function getAccessTokenTtl(): string {
-		return process.env.ACCESS_TOKEN_TTL?.trim() || '1h'
-	}
-
 	function getRefreshTokenTtlDays(): number {
 		const rawValue = process.env.REFRESH_TOKEN_TTL_DAYS?.trim() || '30'
 		const ttlDays = Number.parseInt(rawValue, 10)
@@ -76,8 +72,7 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
 	async function buildAuthResponse(user: { id: string, firstName: string, lastName: string, email: string, avatarPath: string, tokenVersion: number }) {
 		const accessToken = fastify.jwt.sign(
-			{ sub: user.id, email: user.email, tokenVersion: user.tokenVersion },
-			{ expiresIn: getAccessTokenTtl() }
+			{ sub: user.id, email: user.email, tokenVersion: user.tokenVersion }
 		)
 		const issuedRefreshToken = await issueRefreshToken(user.id, user.tokenVersion, getRefreshTokenTtlDays())
 
@@ -395,7 +390,8 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 				firstName: user.firstName,
 				lastName: user.lastName,
 				email: user.email,
-				phone: user.phone ?? null
+				phone: user.phone ?? null,
+				avatarPath: user.avatarPath
 			}
 		}
 	})

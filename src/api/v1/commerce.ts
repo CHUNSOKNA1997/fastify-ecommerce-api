@@ -12,8 +12,7 @@ import {
   listCategories,
   listNewArrivals,
   listPopularNearYou,
-  listProducts
-  ,
+  listProducts,
   listTrendingNow
 } from '../../modules/commerce/product.repository'
 import {
@@ -295,7 +294,7 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
   /**
    * Update cart item
-   * @route PATCH /cart/items/:itemId
+   * @route PUT /cart/items/:itemId
    * @description Update cart item
    * @response 200 - Cart item updated
    * @response 400 - Bad request
@@ -303,7 +302,7 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    * @response 404 - Not found
    * @response 500 - Internal server error
    */
-  fastify.patch<{ Params: CartItemParams, Body: CartItemUpdateBody }>('/cart/items/:itemId', {
+  fastify.put<{ Params: CartItemParams, Body: CartItemUpdateBody }>('/cart/items/:itemId', {
     preHandler: fastify.authenticate,
     schema: {
       tags: ['Cart'],
@@ -444,8 +443,6 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
       deliveryFee: serializedCart.summary.deliveryFee,
       total: serializedCart.summary.total
     })
-
-    await clearCart(request.user.sub)
 
     reply.code(201)
     return {

@@ -12,7 +12,12 @@ const demoProducts = [
     description: 'Breathable linen shirt tailored for warm-weather daily wear.',
     price: 42,
     category: 'Unisex Wear',
-    imagePath: '/assets/images/linen-shirt.svg',
+    imagePath: 'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?auto=format&fit=crop&w=900&q=80',
+    imagePaths: [
+      'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1581655353564-df123a1eb820?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80'
+    ],
     rating: 4.7,
     isFavorite: false,
     isNewArrival: true,
@@ -24,7 +29,12 @@ const demoProducts = [
     description: 'Lightweight outerwear with a clean street silhouette and matte finish.',
     price: 68,
     category: 'Male Wear',
-    imagePath: '/assets/images/runner-jacket.svg',
+    imagePath: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=900&q=80',
+    imagePaths: [
+      'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=900&q=80'
+    ],
     rating: 4.8,
     isFavorite: false,
     isNewArrival: true,
@@ -36,7 +46,12 @@ const demoProducts = [
     description: 'Soft drape dress with a modern cut for everyday elegance.',
     price: 74,
     category: 'Female Wear',
-    imagePath: '/assets/images/silk-dress.svg',
+    imagePath: 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80',
+    imagePaths: [
+      'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=900&q=80'
+    ],
     rating: 4.9,
     isFavorite: true,
     isNewArrival: true,
@@ -48,7 +63,12 @@ const demoProducts = [
     description: 'Structured carryall with reinforced handles and durable canvas body.',
     price: 24,
     category: 'Accessories',
-    imagePath: '/assets/images/utility-tote.svg',
+    imagePath: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=80',
+    imagePaths: [
+      'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1594223274512-ad4803739b7c?auto=format&fit=crop&w=900&q=80'
+    ],
     rating: 4.5,
     isFavorite: false,
     isNewArrival: false,
@@ -60,7 +80,12 @@ const demoProducts = [
     description: 'Comfort-first sneaker with layered sole and low-profile upper.',
     price: 58,
     category: 'Footwear',
-    imagePath: '/assets/images/city-walk-sneaker.svg',
+    imagePath: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=80',
+    imagePaths: [
+      'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1543508282-6319a3e2621f?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1460353581641-37baddab0fa2?auto=format&fit=crop&w=900&q=80'
+    ],
     rating: 4.6,
     isFavorite: true,
     isNewArrival: false,
@@ -72,7 +97,12 @@ const demoProducts = [
     description: 'Textured knit polo that sits between formal and casual.',
     price: 39,
     category: 'Male Wear',
-    imagePath: '/assets/images/knit-polo.svg',
+    imagePath: 'https://images.unsplash.com/photo-1581655353564-df123a1eb820?auto=format&fit=crop&w=900&q=80',
+    imagePaths: [
+      'https://images.unsplash.com/photo-1581655353564-df123a1eb820?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80'
+    ],
     rating: 4.4,
     isFavorite: false,
     isNewArrival: false,
@@ -84,7 +114,12 @@ const demoProducts = [
     description: 'Midi skirt with sharp pleats and an easy elastic waist.',
     price: 46,
     category: 'Female Wear',
-    imagePath: '/assets/images/pleat-skirt.svg',
+    imagePath: 'https://images.unsplash.com/photo-1581044777550-4cfa60707c03?auto=format&fit=crop&w=900&q=80',
+    imagePaths: [
+      'https://images.unsplash.com/photo-1581044777550-4cfa60707c03?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1496747611176-843222e1e57c?auto=format&fit=crop&w=900&q=80'
+    ],
     rating: 4.3,
     isFavorite: false,
     isNewArrival: false,
@@ -96,7 +131,12 @@ const demoProducts = [
     description: 'Compact crossbody bag built for essentials and all-day use.',
     price: 33,
     category: 'Accessories',
-    imagePath: '/assets/images/crossbody.svg',
+    imagePath: 'https://images.unsplash.com/photo-1594223274512-ad4803739b7c?auto=format&fit=crop&w=900&q=80',
+    imagePaths: [
+      'https://images.unsplash.com/photo-1594223274512-ad4803739b7c?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=900&q=80'
+    ],
     rating: 4.8,
     isFavorite: false,
     isNewArrival: false,

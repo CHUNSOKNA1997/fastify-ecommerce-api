@@ -19,7 +19,7 @@ const fallbackBanners: BannerSummary[] = [
     subtitle: '50% discount for the first transaction.',
     discountLabel: '50% OFF',
     actionLabel: 'Shop now',
-    imagePath: '/assets/images/banner-coat.svg',
+    imagePath: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&w=1200&q=80',
     backgroundColor: '#ff6b1a',
     accentColor: '#ff944d',
     textColor: '#ffffff'
@@ -30,7 +30,7 @@ const fallbackBanners: BannerSummary[] = [
     subtitle: 'Fresh picks to complete every outfit.',
     discountLabel: 'New Drop',
     actionLabel: 'Explore',
-    imagePath: '/assets/images/banner-bag.svg',
+    imagePath: 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=1200&q=80',
     backgroundColor: '#7c4dff',
     accentColor: '#9f7bff',
     textColor: '#ffffff'
@@ -41,7 +41,7 @@ const fallbackBanners: BannerSummary[] = [
     subtitle: 'Comfort-led layers for everyday movement.',
     discountLabel: 'Trending',
     actionLabel: 'See more',
-    imagePath: '/assets/images/banner-hoodie.svg',
+    imagePath: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?auto=format&fit=crop&w=1200&q=80',
     backgroundColor: '#1f2937',
     accentColor: '#374151',
     textColor: '#ffffff'

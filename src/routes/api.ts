@@ -6,6 +6,7 @@ export const autoPrefix = '/api'
 
 const apiRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
   void fastify.register(v1Routes, { prefix: '/v1' })
+  void fastify.register(paymentRoutes, { prefix: '/v1/payments' })
   void fastify.register(paymentRoutes, { prefix: '/payments' })
 }
 

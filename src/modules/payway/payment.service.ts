@@ -120,7 +120,7 @@ export class PaymentService {
 
     return {
       payment: this.toPaymentSummary(storedPayment),
-      checkoutUrl: `${baseUrl}/api/payments/checkout/${storedPayment.id}`,
+      checkoutUrl: `${baseUrl}/api/v1/payments/checkout/${storedPayment.id}`,
       purchaseUrl: config.purchaseUrl,
       purchasePayload: signedPayload,
       expiresAt: checkoutExpiresAt
@@ -263,11 +263,11 @@ export class PaymentService {
     baseUrl: string
     config: PaywayConfig
   }): PaywayPurchaseRequest {
-    const webhookUrl = input.config.webhookUrl ?? `${input.baseUrl}/api/payments/webhook`
+    const webhookUrl = input.config.webhookUrl ?? `${input.baseUrl}/api/v1/payments/webhook`
     const continueSuccessUrl = input.config.continueSuccessUrl
       ?? input.config.returnUrl
-      ?? `${input.baseUrl}/api/payments/return`
-    const cancelUrl = input.config.cancelUrl ?? `${input.baseUrl}/api/payments/cancel`
+      ?? `${input.baseUrl}/api/v1/payments/return`
+    const cancelUrl = input.config.cancelUrl ?? `${input.baseUrl}/api/v1/payments/cancel`
 
     return {
       req_time: buildRequestTime(),
@@ -477,7 +477,7 @@ export class PaymentService {
         },
         merchant: {
           name: config.merchantDisplayName,
-          logo: '',
+          logo: 'public/assets/images/main-logo/app-main-logo.png',
           primary_color: '#201B44',
           cancel_url: '',
           themes: 'default',

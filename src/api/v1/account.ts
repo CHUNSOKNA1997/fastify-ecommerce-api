@@ -1,4 +1,8 @@
-import { FastifyPluginAsync } from 'fastify'
+import { createWriteStream } from 'node:fs'
+import { mkdir } from 'node:fs/promises'
+import { extname, join } from 'node:path'
+import { pipeline } from 'node:stream/promises'
+import { FastifyPluginAsync, FastifyRequest } from 'fastify'
 import { findUserById, updateUserProfile } from '../../modules/auth/user.repository'
 import { findProductById } from '../../modules/commerce/product.repository'
 import {
@@ -6,6 +10,7 @@ import {
   findOrCreateWishlistByUserId,
   removeWishlistItem
 } from '../../modules/commerce/wishlist.repository'
+import { DEFAULT_USER_AVATAR_PATH } from '../../modules/auth/user.model'
 
 type UpdateProfileBody = {
   firstName: string
@@ -35,6 +40,111 @@ function serializeWishlist(wishlist: Awaited<ReturnType<typeof findOrCreateWishl
     })),
     updatedAt: wishlist.updatedAt.toISOString()
   }
+}
+
+const AVATAR_UPLOAD_DIR = join(process.cwd(), 'public', 'uploads', 'avatars')
+const ALLOWED_AVATAR_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+
+function normalizeProfileTextField(value: unknown): string {
+  if (typeof value === 'string') {
+    return value.trim()
+  }
+
+  if (value && typeof value === 'object' && 'value' in value && typeof value.value === 'string') {
+    return value.value.trim()
+  }
+
+  return ''
+}
+
+function resolveAvatarExtension(filename?: string, mimetype?: string): string {
+  const normalizedExtension = extname(filename ?? '').toLowerCase()
+  if (normalizedExtension) {
+    return normalizedExtension
+  }
+
+  switch (mimetype) {
+    case 'image/jpeg':
+      return '.jpg'
+    case 'image/png':
+      return '.png'
+    case 'image/webp':
+      return '.webp'
+    case 'image/gif':
+      return '.gif'
+    default:
+      return '.png'
+  }
+}
+
+async function storeAvatarUpload(
+  request: FastifyRequest & { parts: () => AsyncIterable<any> },
+  userId: string,
+  fastify: Parameters<FastifyPluginAsync>[0]
+): Promise<{
+  firstName: string
+  lastName: string
+  phone?: string
+  avatarPath?: string
+}> {
+  const parts = request.parts()
+  const updates: {
+    firstName: string
+    lastName: string
+    phone?: string
+    avatarPath?: string
+  } = {
+    firstName: '',
+    lastName: ''
+  }
+
+  for await (const part of parts) {
+    if (part.type === 'file') {
+      if (part.fieldname !== 'avatar') {
+        part.file.resume()
+        continue
+      }
+
+      if (!ALLOWED_AVATAR_MIME_TYPES.has(part.mimetype)) {
+        throw fastify.httpErrors.badRequest('Avatar must be a JPEG, PNG, WEBP, or GIF image')
+      }
+
+      await mkdir(AVATAR_UPLOAD_DIR, { recursive: true })
+
+      const extension = resolveAvatarExtension(part.filename, part.mimetype)
+      const fileName = `${userId}-${Date.now()}${extension}`
+      const filePath = join(AVATAR_UPLOAD_DIR, fileName)
+
+      await pipeline(part.file, createWriteStream(filePath))
+      updates.avatarPath = `/uploads/avatars/${fileName}`
+      continue
+    }
+
+    if (part.fieldname === 'firstName') {
+      updates.firstName = normalizeProfileTextField(part.value)
+      continue
+    }
+
+    if (part.fieldname === 'lastName') {
+      updates.lastName = normalizeProfileTextField(part.value)
+      continue
+    }
+
+    if (part.fieldname === 'phone') {
+      updates.phone = normalizeProfileTextField(part.value) || undefined
+      continue
+    }
+
+    if (part.fieldname === 'avatarPath') {
+      updates.avatarPath = normalizeProfileTextField(part.value) || DEFAULT_USER_AVATAR_PATH
+    }
+  }
+
+  if (!updates.firstName || !updates.lastName) {
+    throw fastify.httpErrors.badRequest('First name and last name are required')
+  }
+
+  return updates
 }
 
 /**
@@ -80,7 +190,7 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
   /**
    * Update user profile
-   * @route PATCH /users/profile
+   * @route PUT /users/profile
    * @description Update user profile
    * @response 200 - User profile updated
    * @response 400 - Bad request
@@ -88,13 +198,14 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
    * @response 404 - Not found
    * @response 500 - Internal server error
    */
-  fastify.patch<{ Body: UpdateProfileBody }>('/users/profile', {
+  fastify.put<{ Body: UpdateProfileBody }>('/users/profile', {
     preHandler: fastify.authenticate,
     schema: {
       tags: ['Account'],
       summary: 'Update profile',
-      description: 'Update the authenticated user profile.',
+      description: 'Update the authenticated user profile. Accepts JSON or multipart form data with an optional avatar file.',
       security: [{ bearerAuth: [] }],
+      consumes: ['application/json', 'multipart/form-data'],
       body: {
         type: 'object',
         required: ['firstName', 'lastName'],
@@ -103,17 +214,26 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
           firstName: { type: 'string', minLength: 1, maxLength: 100 },
           lastName: { type: 'string', minLength: 1, maxLength: 100 },
           phone: { type: 'string', minLength: 1, maxLength: 30 },
-          avatarPath: { type: 'string', minLength: 1, maxLength: 500 }
+          avatarPath: { type: 'string', minLength: 1, maxLength: 500 },
+          avatar: { type: 'string', format: 'binary' }
         }
       }
     }
   }, async (request) => {
-    const updatedUser = await updateUserProfile(request.user.sub, {
-      firstName: request.body.firstName.trim(),
-      lastName: request.body.lastName.trim(),
-      phone: request.body.phone,
-      avatarPath: request.body.avatarPath
-    })
+    const updateInput = request.isMultipart()
+      ? await storeAvatarUpload(request as FastifyRequest & { parts: () => AsyncIterable<any> }, request.user.sub, fastify)
+      : {
+          firstName: normalizeProfileTextField(request.body.firstName),
+          lastName: normalizeProfileTextField(request.body.lastName),
+          phone: normalizeProfileTextField(request.body.phone) || undefined,
+          avatarPath: normalizeProfileTextField(request.body.avatarPath) || undefined
+        }
+
+    if (!updateInput.firstName || !updateInput.lastName) {
+      throw fastify.httpErrors.badRequest('First name and last name are required')
+    }
+
+    const updatedUser = await updateUserProfile(request.user.sub, updateInput)
 
     if (!updatedUser) {
       throw fastify.httpErrors.notFound('User not found')

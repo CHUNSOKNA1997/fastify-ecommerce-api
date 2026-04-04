@@ -1,5 +1,6 @@
 import { fallbackCatalog } from './catalog'
 import { ProductModel } from './product.model'
+import { isValidObjectId } from 'mongoose'
 
 type ProductSummary = {
   id: string
@@ -8,11 +9,44 @@ type ProductSummary = {
   price: number
   category: string
   imagePath: string
+  imagePaths: string[]
   rating: number
   isFavorite: boolean
   isNewArrival: boolean
   isTrending: boolean
   isPopularNearYou: boolean
+}
+
+const fallbackProductGallery = [
+  'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1543508282-6319a3e2621f?auto=format&fit=crop&w=900&q=80',
+  'https://images.unsplash.com/photo-1594223274512-ad4803739b7c?auto=format&fit=crop&w=900&q=80'
+]
+
+function ensureThreeImagePaths(primaryImagePath: string, imagePaths?: string[]): string[] {
+  const normalized = Array.from(new Set(
+    [primaryImagePath, ...(imagePaths ?? [])]
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
+  ))
+
+  if (normalized.length === 0) {
+    normalized.push(primaryImagePath)
+  }
+
+  for (const fallbackImage of fallbackProductGallery) {
+    if (normalized.length >= 3) {
+      break
+    }
+
+    if (!normalized.includes(fallbackImage)) {
+      normalized.push(fallbackImage)
+    }
+  }
+
+  return normalized.slice(0, 3)
 }
 
 function toProductSummary(product: {
@@ -23,6 +57,7 @@ function toProductSummary(product: {
   price: number
   category: string
   imagePath: string
+  imagePaths?: string[]
   rating: number
   isFavorite: boolean
   isNewArrival?: boolean
@@ -36,6 +71,7 @@ function toProductSummary(product: {
     price: product.price,
     category: product.category,
     imagePath: product.imagePath,
+    imagePaths: ensureThreeImagePaths(product.imagePath, product.imagePaths),
     rating: product.rating,
     isFavorite: product.isFavorite,
     isNewArrival: product.isNewArrival ?? false,
@@ -140,9 +176,11 @@ export async function listPopularNearYou(limit = 10): Promise<ProductSummary[]> 
 }
 
 export async function findProductById(id: string): Promise<ProductSummary | null> {
-  const product = await ProductModel.findById(id)
-  if (product) {
-    return toProductSummary(product)
+  if (isValidObjectId(id)) {
+    const product = await ProductModel.findById(id)
+    if (product) {
+      return toProductSummary(product)
+    }
   }
 
   return fallbackCatalog.find((item) => item.id === id) ?? null
