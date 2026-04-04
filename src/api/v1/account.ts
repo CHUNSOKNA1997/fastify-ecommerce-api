@@ -44,6 +44,7 @@ function serializeWishlist(wishlist: Awaited<ReturnType<typeof findOrCreateWishl
 
 const AVATAR_UPLOAD_DIR = join(process.cwd(), 'public', 'uploads', 'avatars')
 const ALLOWED_AVATAR_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+const ALLOWED_AVATAR_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif'])
 
 function normalizeProfileTextField(value: unknown): string {
   if (typeof value === 'string') {
@@ -77,6 +78,15 @@ function resolveAvatarExtension(filename?: string, mimetype?: string): string {
   }
 }
 
+function isAllowedAvatarFile(filename?: string, mimetype?: string): boolean {
+  if (mimetype && ALLOWED_AVATAR_MIME_TYPES.has(mimetype)) {
+    return true
+  }
+
+  const extension = extname(filename ?? '').toLowerCase()
+  return ALLOWED_AVATAR_EXTENSIONS.has(extension)
+}
+
 async function storeAvatarUpload(
   request: FastifyRequest & { parts: () => AsyncIterable<any> },
   userId: string,
@@ -105,7 +115,7 @@ async function storeAvatarUpload(
         continue
       }
 
-      if (!ALLOWED_AVATAR_MIME_TYPES.has(part.mimetype)) {
+      if (!isAllowedAvatarFile(part.filename, part.mimetype)) {
         throw fastify.httpErrors.badRequest('Avatar must be a JPEG, PNG, WEBP, or GIF image')
       }
 
@@ -205,19 +215,7 @@ const accountRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
       summary: 'Update profile',
       description: 'Update the authenticated user profile. Accepts JSON or multipart form data with an optional avatar file.',
       security: [{ bearerAuth: [] }],
-      consumes: ['application/json', 'multipart/form-data'],
-      body: {
-        type: 'object',
-        required: ['firstName', 'lastName'],
-        additionalProperties: false,
-        properties: {
-          firstName: { type: 'string', minLength: 1, maxLength: 100 },
-          lastName: { type: 'string', minLength: 1, maxLength: 100 },
-          phone: { type: 'string', minLength: 1, maxLength: 30 },
-          avatarPath: { type: 'string', minLength: 1, maxLength: 500 },
-          avatar: { type: 'string', format: 'binary' }
-        }
-      }
+      consumes: ['application/json', 'multipart/form-data']
     }
   }, async (request) => {
     const updateInput = request.isMultipart()
