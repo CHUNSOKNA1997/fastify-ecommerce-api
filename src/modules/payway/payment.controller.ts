@@ -11,8 +11,7 @@ export class PaymentController {
   ) {
     const result = await this.paymentService.createCheckout(
       request.body,
-      this.getBaseUrl(request),
-      request.log
+      this.getBaseUrl(request)
     )
 
     reply.code(201)

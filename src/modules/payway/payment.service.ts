@@ -43,8 +43,7 @@ export class PaymentService {
 
   async createCheckout(
     input: CreateCheckoutInput,
-    baseUrl: string,
-    logger: FastifyBaseLogger
+    baseUrl: string
   ): Promise<CreateCheckoutResult> {
     const normalizedOrderId = input.orderId.trim()
     if (!normalizedOrderId) {
