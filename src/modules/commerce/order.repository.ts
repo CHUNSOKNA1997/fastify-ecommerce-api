@@ -1,4 +1,4 @@
-import { Types } from 'mongoose'
+import { isValidObjectId, Types } from 'mongoose'
 import { OrderModel } from './order.model'
 
 export type OrderCreateInput = {
@@ -35,4 +35,16 @@ export async function createOrder(input: OrderCreateInput) {
 
 export async function listOrdersByUserId(userId: string | Types.ObjectId) {
   return OrderModel.find({ userId: toObjectId(userId) }).sort({ createdAt: -1 })
+}
+
+export async function updateOrderStatusById(orderId: string, status: 'PENDING' | 'PAID' | 'CANCELLED') {
+  if (!isValidObjectId(orderId)) {
+    return null
+  }
+
+  return OrderModel.findByIdAndUpdate(
+    orderId,
+    { $set: { status } },
+    { new: true }
+  )
 }

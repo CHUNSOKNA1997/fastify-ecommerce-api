@@ -1,5 +1,7 @@
 import axios from 'axios'
 import type { FastifyBaseLogger } from 'fastify'
+import { clearCart } from '../commerce/cart.repository'
+import { updateOrderStatusById } from '../commerce/order.repository'
 import { PaymentRepository } from './payment.repository'
 import type { Payment } from './payment.model'
 import {
@@ -252,6 +254,20 @@ export class PaymentService {
         paymentStatusCode: verification.data?.payment_status_code
       }
     })
+
+    if (nextStatus === 'SUCCESS') {
+      const linkedOrder = await updateOrderStatusById(updatedPayment.orderId, 'PAID')
+      if (linkedOrder) {
+        await clearCart(linkedOrder.userId)
+        await this.repo.appendLog(updatedPayment.id, {
+          event: 'ORDER_MARKED_PAID',
+          timestamp: new Date().toISOString(),
+          details: {
+            orderId: updatedPayment.orderId
+          }
+        })
+      }
+    }
 
     return this.toPaymentSummary(updatedPayment)
   }
