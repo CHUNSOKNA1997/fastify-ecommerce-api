@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import bcrypt from 'bcryptjs'
 import {
+	markUserEmailVerified,
 	createUser,
 	findUserByEmail,
 	findUserById,
@@ -19,6 +20,16 @@ import {
 	markPasswordResetTokenUsed,
 	revokeAllPasswordResetTokens
 } from '../../modules/auth/password-reset-token.repository'
+import {
+	findLatestActiveEmailVerificationOtp,
+	hasEmailVerificationOtpExceededAttempts,
+	incrementEmailVerificationOtpAttemptCount,
+	isEmailVerificationOtpCodeValid,
+	issueEmailVerificationOtp,
+	markEmailVerificationOtpUsed,
+	revokeAllEmailVerificationOtpsForUser
+} from '../../modules/auth/email-verification-otp.repository'
+import { sendEmailVerificationOtp } from '../../modules/auth/mail.service'
 
 type RegisterBody = {
 	firstName: string
@@ -41,6 +52,15 @@ type ForgotPasswordBody = {
 	email: string
 }
 
+type VerifyEmailBody = {
+	email: string
+	otp: string
+}
+
+type ResendEmailOtpBody = {
+	email: string
+}
+
 type ResetPasswordBody = {
 	resetToken: string
 	password: string
@@ -48,6 +68,27 @@ type ResetPasswordBody = {
 }
 
 const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
+	const userSchema = {
+		type: 'object',
+		properties: {
+			id: { type: 'string' },
+			firstName: { type: 'string' },
+			lastName: { type: 'string' },
+			email: { type: 'string', format: 'email' },
+			avatarPath: { type: 'string' },
+			isEmailVerified: { type: 'boolean' }
+		}
+	} as const
+
+	const authSuccessSchema = {
+		type: 'object',
+		properties: {
+			user: userSchema,
+			accessToken: { type: 'string' },
+			refreshToken: { type: 'string' }
+		}
+	} as const
+
 	function getRefreshTokenTtlDays(): number {
 		const rawValue = process.env.REFRESH_TOKEN_TTL_DAYS?.trim() || '30'
 		const ttlDays = Number.parseInt(rawValue, 10)
@@ -70,7 +111,18 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		return ttlMinutes
 	}
 
-	async function buildAuthResponse(user: { id: string, firstName: string, lastName: string, email: string, avatarPath: string, tokenVersion: number }) {
+	function getEmailVerificationOtpTtlMinutes(): number {
+		const rawValue = process.env.EMAIL_VERIFICATION_OTP_TTL_MINUTES?.trim() || '10'
+		const ttlMinutes = Number.parseInt(rawValue, 10)
+
+		if (!Number.isInteger(ttlMinutes) || ttlMinutes <= 0) {
+			throw new Error('EMAIL_VERIFICATION_OTP_TTL_MINUTES must be a positive integer')
+		}
+
+		return ttlMinutes
+	}
+
+	async function buildAuthResponse(user: { id: string, firstName: string, lastName: string, email: string, avatarPath: string, isEmailVerified: boolean, tokenVersion: number }) {
 		const accessToken = fastify.jwt.sign(
 			{ sub: user.id, email: user.email, tokenVersion: user.tokenVersion }
 		)
@@ -82,7 +134,8 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 				firstName: user.firstName,
 				lastName: user.lastName,
 				email: user.email,
-				avatarPath: user.avatarPath
+				avatarPath: user.avatarPath,
+				isEmailVerified: user.isEmailVerified
 			},
 			accessToken,
 			refreshToken: issuedRefreshToken.token,
@@ -103,7 +156,7 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		schema: {
 			tags: ['Auth'],
 			summary: 'Register user',
-			description: 'Create a new user account and return access and refresh tokens.',
+			description: 'Create a new user account and send an email verification OTP.',
 			body: {
 				type: 'object',
 				required: ['firstName', 'lastName', 'email', 'password', 'confirmPassword'],
@@ -114,6 +167,17 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 					email: { type: 'string', format: 'email', maxLength: 254 },
 					password: { type: 'string', minLength: 8, maxLength: 72 },
 					confirmPassword: { type: 'string', minLength: 8, maxLength: 72 }
+				}
+			},
+			response: {
+				201: {
+					type: 'object',
+					properties: {
+						message: { type: 'string' },
+						user: userSchema,
+						verificationOtp: { type: 'string' },
+						expiresInMinutes: { type: 'integer' }
+					}
 				}
 			}
 		}
@@ -138,12 +202,150 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 			throw fastify.httpErrors.conflict('Email is already registered')
 		}
 
+		const otpTtlMinutes = getEmailVerificationOtpTtlMinutes()
+		await revokeAllEmailVerificationOtpsForUser(user.id)
+		const issuedOtp = await issueEmailVerificationOtp(user.id, user.email, otpTtlMinutes)
+		await sendEmailVerificationOtp(user.email, issuedOtp.code, otpTtlMinutes)
+		const isProduction = (process.env.NODE_ENV ?? 'development').toLowerCase() === 'production'
+
 		reply.code(201)
-		const response = await buildAuthResponse(user)
 		return {
+			message: 'Registration successful. Please verify your email with the OTP we sent.',
+			user: {
+				id: user.id,
+				firstName: user.firstName,
+				lastName: user.lastName,
+				email: user.email,
+				avatarPath: user.avatarPath,
+				isEmailVerified: user.isEmailVerified
+			},
+			...(isProduction ? {} : { verificationOtp: issuedOtp.code }),
+			expiresInMinutes: otpTtlMinutes
+		}
+	})
+
+	fastify.post<{ Body: VerifyEmailBody }>('/verify-email', {
+		schema: {
+			tags: ['Auth'],
+			summary: 'Verify email',
+			description: 'Verify a newly registered email address using the OTP code.',
+			body: {
+				type: 'object',
+				required: ['email', 'otp'],
+				additionalProperties: false,
+				properties: {
+					email: { type: 'string', format: 'email', maxLength: 254 },
+					otp: { type: 'string', minLength: 6, maxLength: 6 }
+				}
+			},
+			response: {
+				200: {
+					type: 'object',
+					properties: {
+						message: { type: 'string' },
+						...authSuccessSchema.properties
+					}
+				}
+			}
+		}
+	}, async (request) => {
+		const email = request.body.email.trim()
+		const otp = request.body.otp.trim()
+		const user = await findUserByEmail(email)
+
+		if (!user) {
+			throw fastify.httpErrors.notFound('User not found')
+		}
+
+		if (user.isEmailVerified) {
+			throw fastify.httpErrors.badRequest('Email is already verified')
+		}
+
+		const otpRecord = await findLatestActiveEmailVerificationOtp(email)
+		if (!otpRecord) {
+			throw fastify.httpErrors.unauthorized('Verification code is invalid or expired')
+		}
+
+		if (otpRecord.usedAt || otpRecord.expiresAt.getTime() <= Date.now()) {
+			await markEmailVerificationOtpUsed(otpRecord.id)
+			throw fastify.httpErrors.unauthorized('Verification code is invalid or expired')
+		}
+
+		if (hasEmailVerificationOtpExceededAttempts(otpRecord)) {
+			await markEmailVerificationOtpUsed(otpRecord.id)
+			throw fastify.httpErrors.tooManyRequests('Verification code has been locked. Please request a new one.')
+		}
+
+		if (!isEmailVerificationOtpCodeValid(otp, otpRecord)) {
+			await incrementEmailVerificationOtpAttemptCount(otpRecord.id)
+			throw fastify.httpErrors.unauthorized('Verification code is invalid or expired')
+		}
+
+		await markEmailVerificationOtpUsed(otpRecord.id)
+		const verifiedUser = await markUserEmailVerified(user.id)
+		if (!verifiedUser) {
+			throw fastify.httpErrors.notFound('User not found')
+		}
+
+		const response = await buildAuthResponse(verifiedUser)
+		return {
+			message: 'Email verified successfully',
 			user: response.user,
 			accessToken: response.accessToken,
 			refreshToken: response.refreshToken
+		}
+	})
+
+	fastify.post<{ Body: ResendEmailOtpBody }>('/resend-email-otp', {
+		schema: {
+			tags: ['Auth'],
+			summary: 'Resend email OTP',
+			description: 'Send a fresh email verification OTP to an unverified account.',
+			body: {
+				type: 'object',
+				required: ['email'],
+				additionalProperties: false,
+				properties: {
+					email: { type: 'string', format: 'email', maxLength: 254 }
+				}
+			},
+			response: {
+				200: {
+					type: 'object',
+					properties: {
+						message: { type: 'string' },
+						verificationOtp: { type: 'string' },
+						expiresInMinutes: { type: 'integer' }
+					}
+				}
+			}
+		}
+	}, async (request) => {
+		const email = request.body.email.trim()
+		const user = await findUserByEmail(email)
+
+		if (!user) {
+			return {
+				message: 'If the account exists, a verification code has been sent'
+			}
+		}
+
+		if (user.isEmailVerified) {
+			return {
+				message: 'Email is already verified'
+			}
+		}
+
+		const otpTtlMinutes = getEmailVerificationOtpTtlMinutes()
+		await revokeAllEmailVerificationOtpsForUser(user.id)
+		const issuedOtp = await issueEmailVerificationOtp(user.id, user.email, otpTtlMinutes)
+		await sendEmailVerificationOtp(user.email, issuedOtp.code, otpTtlMinutes)
+		const isProduction = (process.env.NODE_ENV ?? 'development').toLowerCase() === 'production'
+
+		return {
+			message: 'Verification code sent',
+			...(isProduction ? {} : { verificationOtp: issuedOtp.code }),
+			expiresInMinutes: otpTtlMinutes
 		}
 	})
 
@@ -169,6 +371,9 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 					email: { type: 'string', format: 'email', maxLength: 254 },
 					password: { type: 'string', minLength: 8, maxLength: 72 }
 				}
+			},
+			response: {
+				200: authSuccessSchema
 			}
 		}
 	}, async (request) => {
@@ -177,6 +382,10 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
 		if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
 			throw fastify.httpErrors.unauthorized('Invalid email or password')
+		}
+
+		if (!user.isEmailVerified) {
+			throw fastify.httpErrors.forbidden('Please verify your email first')
 		}
 
 		const response = await buildAuthResponse(user)
@@ -208,6 +417,9 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 				properties: {
 					refreshToken: { type: 'string', minLength: 16, maxLength: 500 }
 				}
+			},
+			response: {
+				200: authSuccessSchema
 			}
 		}
 	}, async (request) => {
@@ -224,6 +436,11 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
 		if (!user) {
 			throw fastify.httpErrors.unauthorized('User no longer exists')
+		}
+
+		if (!user.isEmailVerified) {
+			await revokeAllUserRefreshTokens(existingToken.userId)
+			throw fastify.httpErrors.forbidden('Please verify your email first')
 		}
 
 		if (isRevoked) {
@@ -376,7 +593,21 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 			tags: ['Auth'],
 			summary: 'Get current user',
 			description: 'Return the authenticated user profile.',
-			security: [{ bearerAuth: [] }]
+			security: [{ bearerAuth: [] }],
+			response: {
+				200: {
+					type: 'object',
+					properties: {
+						user: {
+							type: 'object',
+							properties: {
+								...userSchema.properties,
+								phone: { anyOf: [{ type: 'string' }, { type: 'null' }] }
+							}
+						}
+					}
+				}
+			}
 		}
 	}, async (request) => {
 		const user = await findUserById(request.user.sub)
@@ -391,7 +622,8 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 				lastName: user.lastName,
 				email: user.email,
 				phone: user.phone ?? null,
-				avatarPath: user.avatarPath
+				avatarPath: user.avatarPath,
+				isEmailVerified: user.isEmailVerified
 			}
 		}
 	})

@@ -6,6 +6,7 @@ export interface User {
   firstName: string
   lastName: string
   email: string
+  isEmailVerified: boolean
   phone?: string
   avatarPath: string
   passwordHash: string
@@ -31,6 +32,11 @@ const userSchema = new Schema<User>({
     unique: true,
     trim: true,
     lowercase: true
+  },
+  isEmailVerified: {
+    type: Boolean,
+    required: true,
+    default: false
   },
   phone: {
     type: String,

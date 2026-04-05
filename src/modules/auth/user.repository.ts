@@ -6,6 +6,7 @@ export interface UserRecord {
   firstName: string
   lastName: string
   email: string
+  isEmailVerified: boolean
   phone?: string
   avatarPath: string
   passwordHash: string
@@ -22,6 +23,7 @@ function toUserRecord(user: HydratedDocument<User>): UserRecord {
     firstName: user.firstName,
     lastName: user.lastName,
     email: user.email,
+    isEmailVerified: user.isEmailVerified,
     phone: user.phone,
     avatarPath: user.avatarPath || DEFAULT_USER_AVATAR_PATH,
     passwordHash: user.passwordHash,
@@ -85,6 +87,24 @@ export async function incrementUserTokenVersion(id: string): Promise<void> {
     { _id: id },
     { $inc: { tokenVersion: 1 } }
   )
+}
+
+export async function markUserEmailVerified(id: string): Promise<UserRecord | null> {
+  const user = await UserModel.findByIdAndUpdate(
+    id,
+    {
+      $set: {
+        isEmailVerified: true
+      }
+    },
+    { new: true }
+  )
+
+  if (!user) {
+    return null
+  }
+
+  return toUserRecord(user)
 }
 
 export async function updateUserPasswordHash(id: string, passwordHash: string): Promise<void> {
