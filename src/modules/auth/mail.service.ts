@@ -55,3 +55,32 @@ export async function sendEmailVerificationOtp(email: string, otp: string, ttlMi
     `
   })
 }
+
+export async function sendPasswordResetToken(email: string, resetToken: string, ttlMinutes: number): Promise<void> {
+  const transporter = createTransporter()
+  const config = getMailConfig()
+  const isProduction = (process.env.NODE_ENV ?? 'development').toLowerCase() === 'production'
+
+  if (!transporter || !config.from) {
+    if (isProduction) {
+      throw new Error('SMTP configuration is required in production')
+    }
+
+    return
+  }
+
+  await transporter.sendMail({
+    from: config.from,
+    to: email,
+    subject: 'Reset your password',
+    text: `Your password reset OTP is ${resetToken}. It expires in ${ttlMinutes} minutes.`,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h2>Reset your password</h2>
+        <p>Use this OTP to reset your password:</p>
+        <p style="font-size: 28px; font-weight: 700; letter-spacing: 6px;">${resetToken}</p>
+        <p>This OTP expires in ${ttlMinutes} minutes.</p>
+      </div>
+    `
+  })
+}

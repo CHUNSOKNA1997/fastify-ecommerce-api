@@ -29,7 +29,7 @@ import {
 	markEmailVerificationOtpUsed,
 	revokeAllEmailVerificationOtpsForUser
 } from '../../modules/auth/email-verification-otp.repository'
-import { sendEmailVerificationOtp } from '../../modules/auth/mail.service'
+import { sendEmailVerificationOtp, sendPasswordResetToken } from '../../modules/auth/mail.service'
 
 type RegisterBody = {
 	firstName: string
@@ -59,6 +59,11 @@ type VerifyEmailBody = {
 
 type ResendEmailOtpBody = {
 	email: string
+}
+
+type VerifyForgotPasswordOtpBody = {
+	email: string
+	otp: string
 }
 
 type ResetPasswordBody = {
@@ -120,6 +125,18 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		}
 
 		return ttlMinutes
+	}
+
+	function buildPasswordResetSessionToken(user: { id: string, email: string, tokenVersion: number }): string {
+		return fastify.jwt.sign(
+			{
+				sub: user.id,
+				email: user.email,
+				tokenVersion: user.tokenVersion,
+				purpose: 'password-reset'
+			} as any,
+			{ expiresIn: `${getResetTokenTtlMinutes()}m` }
+		)
 	}
 
 	async function buildAuthResponse(user: { id: string, firstName: string, lastName: string, email: string, avatarPath: string, isEmailVerified: boolean, tokenVersion: number }) {
@@ -481,7 +498,7 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		schema: {
 			tags: ['Auth'],
 			summary: 'Forgot password',
-			description: 'Request a password reset token. In non-production environments the token is returned in the response.',
+			description: 'Request a password reset OTP. In non-production environments the OTP is returned in the response.',
 			body: {
 				type: 'object',
 				required: ['email'],
@@ -502,6 +519,7 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
 		await revokeAllPasswordResetTokens(user.id)
 		const issuedToken = await issuePasswordResetToken(user.id, getResetTokenTtlMinutes())
+		await sendPasswordResetToken(user.email, issuedToken.token, getResetTokenTtlMinutes())
 		const isProduction = (process.env.NODE_ENV ?? 'development').toLowerCase() === 'production'
 
 		if (isProduction) {
@@ -511,8 +529,67 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		}
 
 		return {
-			message: 'Password reset token generated',
-			resetToken: issuedToken.token
+			message: 'Password reset OTP generated',
+			resetOtp: issuedToken.token
+		}
+	})
+
+	fastify.post<{ Body: VerifyForgotPasswordOtpBody }>('/forgot-password/otp-verify', {
+		schema: {
+			tags: ['Auth'],
+			summary: 'Verify forgot password OTP',
+			description: 'Verify the password reset OTP and return a short-lived reset token.',
+			body: {
+				type: 'object',
+				required: ['email', 'otp'],
+				additionalProperties: false,
+				properties: {
+					email: { type: 'string', format: 'email', maxLength: 254 },
+					otp: { type: 'string', minLength: 6, maxLength: 6 }
+				}
+			},
+			response: {
+				200: {
+					type: 'object',
+					properties: {
+						message: { type: 'string' },
+						resetToken: { type: 'string' }
+					}
+				}
+			}
+		}
+	}, async (request) => {
+		const email = request.body.email.trim()
+		const otp = request.body.otp.trim()
+		const user = await findUserByEmail(email)
+
+		if (!user) {
+			throw fastify.httpErrors.unauthorized('Invalid password reset OTP')
+		}
+
+		const resetRecord = await findPasswordResetToken(otp)
+		if (!resetRecord) {
+			throw fastify.httpErrors.unauthorized('Invalid password reset OTP')
+		}
+
+		if (resetRecord.userId !== user.id) {
+			throw fastify.httpErrors.unauthorized('Invalid password reset OTP')
+		}
+
+		if (resetRecord.usedAt) {
+			throw fastify.httpErrors.unauthorized('Password reset OTP has already been used')
+		}
+
+		if (resetRecord.expiresAt.getTime() <= Date.now()) {
+			await markPasswordResetTokenUsed(resetRecord.id)
+			throw fastify.httpErrors.unauthorized('Password reset OTP has expired')
+		}
+
+		await markPasswordResetTokenUsed(resetRecord.id)
+
+		return {
+			message: 'OTP verified successfully',
+			resetToken: buildPasswordResetSessionToken(user)
 		}
 	})
 
@@ -529,13 +606,13 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		schema: {
 			tags: ['Auth'],
 			summary: 'Reset password',
-			description: 'Reset a user password using a valid reset token.',
+			description: 'Reset a user password using a valid short-lived reset token.',
 			body: {
 				type: 'object',
 				required: ['resetToken', 'password', 'confirmPassword'],
 				additionalProperties: false,
 				properties: {
-					resetToken: { type: 'string', minLength: 16, maxLength: 500 },
+					resetToken: { type: 'string', minLength: 16, maxLength: 2000 },
 					password: { type: 'string', minLength: 8, maxLength: 72 },
 					confirmPassword: { type: 'string', minLength: 8, maxLength: 72 }
 				}
@@ -547,28 +624,24 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 			throw fastify.httpErrors.badRequest('Password and confirm password do not match')
 		}
 
-		const resetRecord = await findPasswordResetToken(resetToken.trim())
-		if (!resetRecord) {
+		let decoded: { sub: string, email: string, tokenVersion: number, purpose?: string }
+		try {
+			decoded = await fastify.jwt.verify(resetToken.trim()) as { sub: string, email: string, tokenVersion: number, purpose?: string }
+		} catch {
 			throw fastify.httpErrors.unauthorized('Invalid password reset token')
 		}
 
-		if (resetRecord.usedAt) {
-			throw fastify.httpErrors.unauthorized('Password reset token has already been used')
+		if (decoded.purpose !== 'password-reset') {
+			throw fastify.httpErrors.unauthorized('Invalid password reset token')
 		}
 
-		if (resetRecord.expiresAt.getTime() <= Date.now()) {
-			await markPasswordResetTokenUsed(resetRecord.id)
-			throw fastify.httpErrors.unauthorized('Password reset token has expired')
-		}
-
-		const user = await findUserById(resetRecord.userId)
-		if (!user) {
-			throw fastify.httpErrors.unauthorized('User no longer exists')
+		const user = await findUserById(decoded.sub)
+		if (!user || user.email !== decoded.email || user.tokenVersion !== decoded.tokenVersion) {
+			throw fastify.httpErrors.unauthorized('Invalid password reset token')
 		}
 
 		const passwordHash = await bcrypt.hash(password, 10)
 		await updateUserPasswordHash(user.id, passwordHash)
-		await markPasswordResetTokenUsed(resetRecord.id)
 		await revokeAllPasswordResetTokens(user.id)
 		await revokeAllUserRefreshTokens(user.id)
 		await incrementUserTokenVersion(user.id)

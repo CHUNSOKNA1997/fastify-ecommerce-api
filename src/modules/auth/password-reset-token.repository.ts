@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomInt } from 'node:crypto'
 import { HydratedDocument } from 'mongoose'
 import { PasswordResetToken, PasswordResetTokenModel } from './password-reset-token.model'
 
@@ -29,12 +29,12 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
 
-function createOpaqueToken(): string {
-  return randomBytes(48).toString('base64url')
+function createOtpCode(): string {
+  return String(randomInt(0, 1_000_000)).padStart(6, '0')
 }
 
 export async function issuePasswordResetToken(userId: string, ttlMinutes: number): Promise<IssuedPasswordResetToken> {
-  const token = createOpaqueToken()
+  const token = createOtpCode()
   const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000)
   const record = await PasswordResetTokenModel.create({
     userId,
