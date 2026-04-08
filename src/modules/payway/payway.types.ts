@@ -1,4 +1,4 @@
-export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED'
+export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'EXPIRED'
 
 export interface PaywayLogEntry {
   event: string

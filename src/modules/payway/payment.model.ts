@@ -40,7 +40,7 @@ const paymentSchema = new Schema<Payment>({
   },
   status: {
     type: String,
-    enum: ['PENDING', 'SUCCESS', 'FAILED'],
+    enum: ['PENDING', 'SUCCESS', 'FAILED', 'EXPIRED'],
     default: 'PENDING'
   },
   payway: {

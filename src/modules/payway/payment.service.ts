@@ -90,6 +90,8 @@ export class PaymentService {
       throw new Error('Unable to create payment')
     }
 
+    await updateOrderStatusById(normalizedOrderId, 'PENDING')
+
     const signedPayload = {
       ...request,
       hash: generatePurchaseHash(request, config.apiKey)
@@ -129,7 +131,7 @@ export class PaymentService {
   }
 
   async getPaymentStatus(paymentId: string): Promise<PaymentStatusResult> {
-    const payment = await this.repo.findById(paymentId)
+    const payment = await this.getPaymentWithExpiryApplied(paymentId)
     if (!payment) {
       throw new Error('Payment not found')
     }
@@ -144,9 +146,13 @@ export class PaymentService {
     paymentId: string,
     logger: FastifyBaseLogger
   ): Promise<PaywayCheckoutPageResult> {
-    const payment = await this.repo.findById(paymentId)
+    const payment = await this.getPaymentWithExpiryApplied(paymentId)
     if (!payment) {
       throw new Error('Payment not found')
+    }
+
+    if (payment.status === 'EXPIRED') {
+      throw new Error('Payment has expired. Please create a new checkout.')
     }
 
     const cachedHtml = payment.payway?.checkoutHtml
@@ -179,9 +185,10 @@ export class PaymentService {
       payment.payway?.checkoutExpiresAt,
       purchaseResponse
     )
+    const currentPaymentId = this.getPaymentId(payment)
 
-    await this.repo.storeCheckoutHtml(payment.id, html)
-    await this.repo.appendLog(payment.id, {
+    await this.repo.storeCheckoutHtml(currentPaymentId, html)
+    await this.repo.appendLog(currentPaymentId, {
       event: 'CHECKOUT_PAGE_RENDERED',
       timestamp: new Date().toISOString(),
       details: {
@@ -211,11 +218,12 @@ export class PaymentService {
     if (!payment) {
       throw new Error('Payment not found')
     }
+    const currentPaymentId = this.getPaymentId(payment)
 
     const config = this.getConfig()
     const signature = extractCallbackSignature(payload, signatureHeader)
     if (!verifyCallbackHash(payload, config.apiKey, signature)) {
-      await this.repo.appendLog(payment.id, {
+      await this.repo.appendLog(currentPaymentId, {
         event: 'WEBHOOK_SIGNATURE_REJECTED',
         timestamp: new Date().toISOString(),
         details: {
@@ -228,7 +236,7 @@ export class PaymentService {
       }
     }
 
-    await this.repo.appendLog(payment.id, {
+    await this.repo.appendLog(currentPaymentId, {
       event: 'WEBHOOK_RECEIVED',
       timestamp: new Date().toISOString(),
       details: {
@@ -240,7 +248,7 @@ export class PaymentService {
     const verification = await this.fetchTransactionDetail(tranId, config, logger)
     const nextStatus = this.resolveStatus(payment, payload, verification)
 
-    const updatedPayment = await this.repo.markStatus(payment.id, nextStatus, {
+    const updatedPayment = await this.repo.markStatus(currentPaymentId, nextStatus, {
       callback: payload,
       verification
     })
@@ -609,6 +617,66 @@ export class PaymentService {
     return providerAccepted && callbackAccepted && amountMatches && currencyMatches
       ? 'SUCCESS'
       : 'FAILED'
+  }
+
+  private async getPaymentWithExpiryApplied(paymentId: string): Promise<Payment | null> {
+    const payment = await this.repo.findById(paymentId)
+    if (!payment) {
+      return null
+    }
+
+    if (!this.shouldExpirePayment(payment)) {
+      return payment
+    }
+
+    const expiredPayment = await this.repo.markStatus(payment.id, 'EXPIRED', {
+      error: {
+        reason: 'CHECKOUT_EXPIRED'
+      }
+    })
+
+    if (!expiredPayment) {
+      return payment
+    }
+
+    await this.repo.appendLog(expiredPayment.id, {
+      event: 'PAYMENT_EXPIRED',
+      timestamp: new Date().toISOString(),
+      details: {
+        orderId: expiredPayment.orderId,
+        checkoutExpiresAt: expiredPayment.payway?.checkoutExpiresAt
+      }
+    })
+
+    await updateOrderStatusById(expiredPayment.orderId, 'CANCELLED')
+
+    return expiredPayment
+  }
+
+  private shouldExpirePayment(payment: Payment): boolean {
+    if (payment.status !== 'PENDING') {
+      return false
+    }
+
+    const expiresAt = payment.payway?.checkoutExpiresAt
+    if (!expiresAt) {
+      return false
+    }
+
+    const expiresAtMs = Date.parse(expiresAt)
+    if (!Number.isFinite(expiresAtMs)) {
+      return false
+    }
+
+    return Date.now() >= expiresAtMs
+  }
+
+  private getPaymentId(payment: Payment & { _id?: unknown, id?: string }): string {
+    if (typeof payment.id === 'string' && payment.id) {
+      return payment.id
+    }
+
+    return String(payment._id)
   }
 
   private getConfig(): PaywayConfig {
