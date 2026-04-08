@@ -701,31 +701,6 @@ const authRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 		}
 	})
 
-	/**
-	 * Logout user
-	 * @route POST /logout
-	 * @description Logout user
-	 * @response 200 - User logged out
-	 * @response 400 - Bad request
-	 * @response 401 - Unauthorized
-	 * @response 500 - Internal server error
-	 */
-	fastify.post('/logout', {
-		preHandler: fastify.authenticate,
-		schema: {
-			tags: ['Auth'],
-			summary: 'Logout user',
-			description: 'Invalidate the current user sessions by rotating token version and revoking refresh tokens.',
-			security: [{ bearerAuth: [] }]
-		}
-	}, async (request) => {
-		await revokeAllUserRefreshTokens(request.user.sub)
-		await incrementUserTokenVersion(request.user.sub)
-
-		return {
-			message: 'Logged out successfully'
-		}
-	})
 }
 
 export default authRoutes

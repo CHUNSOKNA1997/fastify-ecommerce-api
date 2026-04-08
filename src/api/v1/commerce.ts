@@ -1,29 +1,20 @@
 import { FastifyPluginAsync } from 'fastify'
 import {
   addCartItem,
-  clearCart,
   findOrCreateCartByUserId,
   removeCartItem,
   updateCartItemQuantity
 } from '../../modules/commerce/cart.repository'
-import { listBanners } from '../../modules/commerce/banner.repository'
 import {
   findProductById,
-  listCategories,
   listNewArrivals,
   listPopularNearYou,
-  listProducts,
   listTrendingNow
 } from '../../modules/commerce/product.repository'
 import {
   createOrder,
   listOrdersByUserId
 } from '../../modules/commerce/order.repository'
-
-type ProductListQuery = {
-  search?: string
-  category?: string
-}
 
 type ProductParams = {
   productId: string
@@ -80,50 +71,6 @@ function serializeCart(cart: Awaited<ReturnType<typeof findOrCreateCartByUserId>
  * @param fastify 
  */
 const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
-  fastify.get('/banner', {
-    schema: {
-      tags: ['Catalog'],
-      summary: 'List banners',
-      description: 'Return home screen banner items for the storefront carousel.'
-    }
-  }, async () => {
-    return {
-      items: await listBanners()
-    }
-  })
-
-  /**
-   * List products
-   * @route GET /products
-   * @description List products with optional search and category filtering
-   * @response 200 - List of products
-   * @response 400 - Bad request
-   * @response 401 - Unauthorized
-   * @response 404 - Not found
-   * @response 500 - Internal server error
-   */
-  fastify.get<{ Querystring: ProductListQuery }>('/products', {
-    schema: {
-      tags: ['Catalog'],
-      summary: 'List products',
-      description: 'List products with optional search and category filtering.',
-      querystring: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          search: { type: 'string', minLength: 1, maxLength: 100 },
-          category: { type: 'string', minLength: 1, maxLength: 100 }
-        }
-      }
-    }
-  }, async (request) => {
-    const products = await listProducts(request.query.search, request.query.category)
-
-    return {
-      items: products
-    }
-  })
-
   fastify.get('/products/new-arrivals', {
     schema: {
       tags: ['Catalog'],
@@ -157,28 +104,6 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
   }, async () => {
     return {
       items: await listPopularNearYou()
-    }
-  })
-
-  /**
-   * List categories
-   * @route GET /categories
-   * @description List categories
-   * @response 200 - List of categories
-   * @response 400 - Bad request
-   * @response 401 - Unauthorized
-   * @response 404 - Not found
-   * @response 500 - Internal server error
-   */
-  fastify.get('/categories', {
-    schema: {
-      tags: ['Catalog'],
-      summary: 'List categories',
-      description: 'Return the list of product categories.'
-    }
-  }, async () => {
-    return {
-      items: await listCategories()
     }
   })
 
@@ -372,33 +297,6 @@ const commerceRoutes: FastifyPluginAsync = async (fastify): Promise<void> => {
 
     return {
       message: 'Cart item removed',
-      cart: serializeCart(cart)
-    }
-  })
-
-  /**
-   * Clear cart
-   * @route DELETE /cart
-   * @description Clear cart
-   * @response 200 - Cart cleared
-   * @response 400 - Bad request
-   * @response 401 - Unauthorized
-   * @response 404 - Not found
-   * @response 500 - Internal server error
-   */
-  fastify.delete('/cart', {
-    preHandler: fastify.authenticate,
-    schema: {
-      tags: ['Cart'],
-      summary: 'Clear cart',
-      description: 'Remove all items from the authenticated user cart.',
-      security: [{ bearerAuth: [] }]
-    }
-  }, async (request) => {
-    const cart = await clearCart(request.user.sub)
-
-    return {
-      message: 'Cart cleared',
       cart: serializeCart(cart)
     }
   })
