@@ -37,6 +37,14 @@ export async function listOrdersByUserId(userId: string | Types.ObjectId) {
   return OrderModel.find({ userId: toObjectId(userId) }).sort({ createdAt: -1 })
 }
 
+export async function findOrderById(orderId: string) {
+  if (!isValidObjectId(orderId)) {
+    return null
+  }
+
+  return OrderModel.findById(orderId)
+}
+
 export async function updateOrderStatusById(orderId: string, status: 'PENDING' | 'PAID' | 'CANCELLED') {
   if (!isValidObjectId(orderId)) {
     return null

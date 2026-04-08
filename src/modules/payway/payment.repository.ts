@@ -124,4 +124,16 @@ export class PaymentRepository {
       { new: true }
     )
   }
+
+  async markConfirmationEmailSent(paymentId: string, sentAt: string) {
+    return PaymentModel.findByIdAndUpdate(
+      paymentId,
+      {
+        $set: {
+          'payway.confirmationEmailSentAt': sentAt
+        }
+      },
+      { new: true }
+    )
+  }
 }
