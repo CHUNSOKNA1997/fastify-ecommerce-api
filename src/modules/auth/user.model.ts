@@ -1,6 +1,10 @@
 import { Model, Schema, model, models } from 'mongoose'
 
-export const DEFAULT_USER_AVATAR_PATH = '/assets/images/user/user-avatar.png'
+const LOCAL_DEFAULT_USER_AVATAR_PATH = '/assets/images/user/user-avatar.png'
+
+export function getDefaultUserAvatarPath(): string {
+  return process.env.DEFAULT_USER_AVATAR_URL?.trim() || LOCAL_DEFAULT_USER_AVATAR_PATH
+}
 
 export interface User {
   firstName: string
@@ -46,7 +50,7 @@ const userSchema = new Schema<User>({
     type: String,
     required: true,
     trim: true,
-    default: DEFAULT_USER_AVATAR_PATH
+    default: getDefaultUserAvatarPath
   },
   passwordHash: {
     type: String,

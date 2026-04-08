@@ -7,7 +7,7 @@ import {
   findOrCreateWishlistByUserId,
   removeWishlistItem
 } from '../../modules/commerce/wishlist.repository'
-import { DEFAULT_USER_AVATAR_PATH } from '../../modules/auth/user.model'
+import { getDefaultUserAvatarPath } from '../../modules/auth/user.model'
 import { supabase, SUPABASE_AVATAR_BUCKET } from '../../lib/supabase'
 
 type UpdateProfileBody = {
@@ -176,7 +176,7 @@ async function storeAvatarUpload(
     }
 
     if (part.fieldname === 'avatarPath') {
-      updates.avatarPath = normalizeProfileTextField(part.value) || DEFAULT_USER_AVATAR_PATH
+      updates.avatarPath = normalizeProfileTextField(part.value) || getDefaultUserAvatarPath()
     }
   }
 

@@ -37,6 +37,14 @@ function formatMoney(value: number) {
   return Number(value.toFixed(2))
 }
 
+function getVatAmount(subTotal: number) {
+  return subTotal <= 0 ? 0 : formatMoney(subTotal * 0.1)
+}
+
+function getDeliveryFee(subTotal: number) {
+  return subTotal <= 0 ? 0 : 2
+}
+
 function serializeCart(cart: Awaited<ReturnType<typeof findOrCreateCartByUserId>>) {
   const items = cart.items.map((item) => ({
     id: String(item._id),
@@ -49,8 +57,8 @@ function serializeCart(cart: Awaited<ReturnType<typeof findOrCreateCartByUserId>
     lineTotal: formatMoney(item.unitPrice * item.quantity)
   }))
   const subTotal = formatMoney(items.reduce((sum, item) => sum + item.lineTotal, 0))
-  const vat = items.length === 0 ? 0 : 350
-  const deliveryFee = items.length === 0 ? 0 : 150
+  const vat = getVatAmount(subTotal)
+  const deliveryFee = getDeliveryFee(subTotal)
   const total = formatMoney(subTotal + vat + deliveryFee)
 
   return {
