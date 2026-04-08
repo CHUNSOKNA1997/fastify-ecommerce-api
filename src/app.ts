@@ -13,7 +13,9 @@ const app: FastifyPluginAsync<AppOptions> = async (
   fastify,
   opts
 ): Promise<void> => {
-  // Place here your custom code!
+  fastify.get('/', async (_request, reply) => {
+    return reply.redirect('/docs')
+  })
 
   // Do not touch the following lines
 

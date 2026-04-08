@@ -35,6 +35,7 @@ type PaywayConfig = {
   transactionDetailUrl: string
   requireWebhookSignature: boolean
   webhookUrl?: string
+  returnDeepLink?: string
   returnUrl?: string
   cancelUrl?: string
   continueSuccessUrl?: string
@@ -326,6 +327,7 @@ export class PaymentService {
     config: PaywayConfig
   }): PaywayPurchaseRequest {
     const webhookUrl = input.config.webhookUrl ?? `${input.baseUrl}/api/v1/payments/webhook`
+    const returnDeepLink = input.config.returnDeepLink
     const continueSuccessUrl = input.config.continueSuccessUrl
       ?? input.config.returnUrl
       ?? `${input.baseUrl}/api/v1/payments/return`
@@ -341,6 +343,7 @@ export class PaymentService {
       return_params: input.orderId,
       return_url: webhookUrl,
       cancel_url: cancelUrl,
+      ...(returnDeepLink ? { return_deeplink: returnDeepLink } : {}),
       ...(continueSuccessUrl ? { continue_success_url: continueSuccessUrl } : {})
     }
   }
@@ -733,6 +736,7 @@ export class PaymentService {
         'https://checkout-sandbox.payway.com.kh/api/payment-gateway/v1/payments/check-transaction-2',
       requireWebhookSignature: this.getBooleanEnv('PAYWAY_WEBHOOK_REQUIRE_SIGNATURE', false),
       webhookUrl: this.getOptionalEnv('PAYWAY_WEBHOOK_URL'),
+      returnDeepLink: this.getOptionalEnv('PAYWAY_RETURN_DEEPLINK'),
       returnUrl: this.getOptionalEnv('PAYWAY_RETURN_URL'),
       cancelUrl: this.getOptionalEnv('PAYWAY_CANCEL_URL'),
       continueSuccessUrl: this.getOptionalEnv('PAYWAY_CONTINUE_SUCCESS_URL')
