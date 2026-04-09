@@ -640,7 +640,7 @@ export class PaymentService {
     payment: Payment,
     payload: PaywayCallbackPayload,
     verification: PaywayCheckTransactionResponse
-  ): 'SUCCESS' | 'FAILED' {
+  ): 'SUCCESS' | 'FAILED' | 'PENDING' {
     const verificationCode = String(verification.status?.code ?? '')
     const paymentStatusCode = Number(verification.data?.payment_status_code)
     const providerAmount = Number(
@@ -660,10 +660,21 @@ export class PaymentService {
       ['SUCCESS', 'APPROVED', 'PAID', 'COMPLETED'].includes(paymentStatusText)
     )
     const callbackAccepted = callbackStatus === '0' || callbackStatus.toUpperCase() === 'SUCCESS'
+    const callbackRejected = ['1', '2', 'FAILED', 'CANCELLED', 'CANCELED', 'ERROR'].includes(callbackStatus.toUpperCase())
+    const providerRejected =
+      verificationCode !== '' &&
+      verificationCode !== '00' &&
+      ['FAILED', 'DECLINED', 'CANCELLED', 'CANCELED', 'EXPIRED', 'REJECTED'].includes(paymentStatusText)
 
-    return providerAccepted && callbackAccepted && amountMatches && currencyMatches
-      ? 'SUCCESS'
-      : 'FAILED'
+    if (providerAccepted && callbackAccepted && amountMatches && currencyMatches) {
+      return 'SUCCESS'
+    }
+
+    if (callbackRejected || providerRejected) {
+      return 'FAILED'
+    }
+
+    return 'PENDING'
   }
 
   private async getPaymentWithExpiryApplied(paymentId: string): Promise<Payment | null> {
