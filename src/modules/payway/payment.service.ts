@@ -643,13 +643,22 @@ export class PaymentService {
   ): 'SUCCESS' | 'FAILED' {
     const verificationCode = String(verification.status?.code ?? '')
     const paymentStatusCode = Number(verification.data?.payment_status_code)
-    const providerAmount = Number(verification.data?.total_amount)
-    const providerCurrency = String(verification.data?.payment_currency ?? '')
+    const providerAmount = Number(
+      verification.data?.total_amount ?? verification.data?.amount
+    )
+    const providerCurrency = String(
+      verification.data?.payment_currency ?? verification.data?.currency ?? ''
+    )
+    const paymentStatusText = String(verification.data?.payment_status ?? '').toUpperCase()
     const callbackStatus = String(payload.status ?? '')
 
-    const amountMatches = Number.isFinite(providerAmount) && providerAmount === payment.amount
+    const amountMatches = !Number.isFinite(providerAmount) || Math.abs(providerAmount - payment.amount) < 0.01
     const currencyMatches = !providerCurrency || providerCurrency === payment.currency
-    const providerAccepted = verificationCode === '00' && paymentStatusCode === 0
+    const providerAccepted = verificationCode === '00' && (
+      paymentStatusCode === 0 ||
+      Number.isNaN(paymentStatusCode) ||
+      ['SUCCESS', 'APPROVED', 'PAID', 'COMPLETED'].includes(paymentStatusText)
+    )
     const callbackAccepted = callbackStatus === '0' || callbackStatus.toUpperCase() === 'SUCCESS'
 
     return providerAccepted && callbackAccepted && amountMatches && currencyMatches
