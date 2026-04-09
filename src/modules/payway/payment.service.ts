@@ -609,7 +609,10 @@ export class PaymentService {
     const verificationCode = String(verification.status?.code ?? '')
     const paymentStatusCode = Number(verification.data?.payment_status_code)
     const providerAmount = Number(
-      verification.data?.total_amount ?? verification.data?.amount
+      verification.data?.payment_amount ??
+      verification.data?.total_amount ??
+      verification.data?.original_amount ??
+      verification.data?.amount
     )
     const providerCurrency = String(
       verification.data?.payment_currency ?? verification.data?.currency ?? ''
@@ -618,7 +621,12 @@ export class PaymentService {
     const callbackStatus = String(payload.status ?? '')
 
     const amountMatches = !Number.isFinite(providerAmount) || Math.abs(providerAmount - payment.amount) < 0.01
-    const currencyMatches = !providerCurrency || providerCurrency === payment.currency
+    const normalizedProviderCurrency = providerCurrency.trim().toUpperCase()
+    const normalizedPaymentCurrency = String(payment.currency ?? '').trim().toUpperCase()
+    const currencyMatches =
+      !normalizedProviderCurrency ||
+      !normalizedPaymentCurrency ||
+      normalizedProviderCurrency === normalizedPaymentCurrency
     const providerAccepted = verificationCode === '00' && (
       paymentStatusCode === 0 ||
       Number.isNaN(paymentStatusCode) ||
