@@ -1,9 +1,7 @@
 import axios from 'axios'
 import type { FastifyBaseLogger } from 'fastify'
 import { clearCart } from '../commerce/cart.repository'
-import { findOrderById, updateOrderStatusById } from '../commerce/order.repository'
-import { sendPaymentConfirmationEmail } from '../auth/mail.service'
-import { findUserById } from '../auth/user.repository'
+import { updateOrderStatusById } from '../commerce/order.repository'
 import { PaymentRepository } from './payment.repository'
 import type { Payment } from './payment.model'
 import {
@@ -280,39 +278,6 @@ export class PaymentService {
             orderId: updatedPayment.orderId
           }
         })
-      }
-
-      if (!updatedPayment.payway?.confirmationEmailSentAt) {
-        const orderForEmail = linkedOrder ?? await findOrderById(updatedPayment.orderId)
-        const userId = orderForEmail ? String(orderForEmail.userId) : payment.userId ? String(payment.userId) : ''
-        const user = userId ? await findUserById(userId) : null
-
-        if (orderForEmail && user) {
-          await sendPaymentConfirmationEmail({
-            email: user.email,
-            customerName: `${user.firstName} ${user.lastName}`.trim(),
-            orderId: updatedPayment.orderId,
-            transactionId: updatedPayment.tranId,
-            amount: updatedPayment.amount,
-            currency: updatedPayment.currency,
-            items: orderForEmail.items.map((item) => ({
-              name: item.name,
-              quantity: item.quantity,
-              unitPrice: item.unitPrice
-            }))
-          })
-
-          const sentAt = new Date().toISOString()
-          await this.repo.markConfirmationEmailSent(updatedPayment.id, sentAt)
-          await this.repo.appendLog(updatedPayment.id, {
-            event: 'CONFIRMATION_EMAIL_SENT',
-            timestamp: sentAt,
-            details: {
-              orderId: updatedPayment.orderId,
-              email: user.email
-            }
-          })
-        }
       }
     }
 

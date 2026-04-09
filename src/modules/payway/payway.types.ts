@@ -130,7 +130,6 @@ export interface PaymentProviderState {
   checkoutExpiresAt?: string
   callback?: PaywayCallbackPayload
   verification?: PaywayCheckTransactionResponse
-  confirmationEmailSentAt?: string
   lastError?: Record<string, unknown>
   logs?: PaywayLogEntry[]
 }
